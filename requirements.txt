@@ -1,0 +1,7 @@
+feedparser>=6.0.11
+requests>=2.32.3
+openai>=1.55.0
+gspread>=6.1.4
+google-auth>=2.35.0
+beautifulsoup4>=4.12.3
+python-dotenv>=1.0.1
