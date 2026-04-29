@@ -12,6 +12,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import feedparser
 import gspread
@@ -62,6 +63,8 @@ class RadarSettings:
     negative_title_keywords: list[str]
     negative_description_phrases: list[str]
     sheet_headers: list[str]
+    found_date_timezone: str
+    found_date_format: str
     default_dou_rss_urls: list[str]
     default_djinni_rss_urls: list[str]
     score_min: int
@@ -384,6 +387,8 @@ def load_radar_settings(config_path: Path) -> RadarSettings:
             "description_phrases",
         ),
         sheet_headers=config_string_list(data, "sheet_headers"),
+        found_date_timezone=optional_config_string(data, "found_date_timezone", "UTC"),
+        found_date_format=optional_config_string(data, "found_date_format", "%Y-%m-%d %H:%M"),
         default_dou_rss_urls=config_string_list(rss_urls, "dou"),
         default_djinni_rss_urls=config_string_list(rss_urls, "djinni"),
         score_min=config_int(analysis, "score_min", 1, minimum=0),
@@ -991,16 +996,28 @@ def row_for_vacancy(
     return [values_by_header.get(header, "") for header in headers]
 
 
+def format_found_date(radar: RadarSettings) -> str:
+    try:
+        found_date_timezone = ZoneInfo(radar.found_date_timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise RuntimeError(
+            f"Config found_date_timezone={radar.found_date_timezone!r} is not a valid timezone."
+        ) from exc
+
+    return datetime.now(found_date_timezone).strftime(radar.found_date_format)
+
+
 def append_analyzed_vacancies(
     worksheet: gspread.Worksheet,
     headers: list[str],
     analyzed: list[tuple[Vacancy, AnalysisResult]],
+    radar: RadarSettings,
     row_defaults: dict[str, Any],
 ) -> int:
     if not analyzed:
         return 0
 
-    found_date = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    found_date = format_found_date(radar)
     rows = [
         row_for_vacancy(vacancy, analysis, headers, found_date, row_defaults)
         for vacancy, analysis in analyzed
@@ -1219,6 +1236,7 @@ def run() -> None:
         worksheet,
         headers,
         analyzed_to_append,
+        config.radar,
         config.radar.row_defaults,
     )
 

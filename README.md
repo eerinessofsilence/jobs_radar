@@ -101,6 +101,7 @@ Edit `job_radar_config.json` to change non-secret radar behavior without touchin
 - `negative_prefilter` - conservative title/text filters that skip obvious non-fits before OpenAI.
 - `default_rss_urls` - default DOU and Djinni RSS URLs.
 - `sheet_headers` - Google Sheet columns and append order.
+- `found_date_timezone` / `found_date_format` - display format for `Found Date`; the default config writes compact local timestamps like `29.04.2026 16:12`.
 - `analysis` - prompt guidance, max description length, and OpenAI system prompt.
 - `row_defaults` - default values such as `Status` and `Notes`.
 

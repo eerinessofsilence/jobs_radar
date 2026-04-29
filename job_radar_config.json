@@ -78,6 +78,8 @@
     "Status",
     "Notes"
   ],
+  "found_date_timezone": "Europe/Kyiv",
+  "found_date_format": "%d.%m.%Y %H:%M",
   "analysis": {
     "score_min": 1,
     "score_max": 10,
@@ -85,7 +87,7 @@
     "openai_system_prompt": "You are a careful job-fit analyst. Return valid JSON only. Do not wrap JSON in markdown.",
     "scoring_guidance": "Score the full vacancy fit, not just keyword count. Consider stack, responsibilities, seniority, work format, company clarity, salary if present, and risks.",
     "scoring_rubric": "10 exact fit. 8-9 strong fit, minor gaps. 6-7 decent fit, moderate gaps. 5 borderline but worth tracking. 3-4 weak fit or too senior. 1-2 unrelated, office-only, sales/recruiting, or clearly above target level.",
-    "generated_reply_instruction": "Return concise fields. fit_reason and risks: max 1 sentence each. generated_reply: max 700 characters. Do not claim that an application was sent."
+    "generated_reply_instruction": "Return concise fields. fit_reason and risks: max 1 sentence each. generated_reply: 2-4 short sentences, max 450 characters. Make generated_reply specific to the vacancy and candidate fit. Avoid generic thanks/filler like 'Thank you for sharing the opportunity' and broad self-introductions. If the role is a weak fit, state the mismatch directly and ask about more relevant backend/full-stack/Python roles. Do not claim that an application was sent."
   },
   "row_defaults": {
     "Status": "New",
