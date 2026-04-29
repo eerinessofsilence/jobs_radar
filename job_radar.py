@@ -58,6 +58,7 @@ class RadarSettings:
     preferred_required_years: str
     max_required_years: int | None
     experience_guidance: str
+    required_title_keywords: list[str]
     keywords: list[str]
     negative_prefilter_enabled: bool
     negative_title_keywords: list[str]
@@ -117,6 +118,7 @@ class AnalysisResult:
 class RunStats:
     total_fetched: int = 0
     matched_by_keywords: int = 0
+    skipped_by_title_prefilter: int = 0
     skipped_by_negative_prefilter: int = 0
     new_vacancies: int = 0
     analyzed_vacancies: int = 0
@@ -379,6 +381,7 @@ def load_radar_settings(config_path: Path) -> RadarSettings:
         preferred_required_years=optional_config_string(experience, "preferred_required_years"),
         max_required_years=optional_config_int(experience, "max_required_years"),
         experience_guidance=optional_config_string(experience, "guidance"),
+        required_title_keywords=optional_config_string_list(data, "required_title_keywords"),
         keywords=config_string_list(data, "keywords"),
         negative_prefilter_enabled=optional_config_bool(negative_prefilter, "enabled"),
         negative_title_keywords=optional_config_string_list(negative_prefilter, "title_keywords"),
@@ -587,10 +590,92 @@ def extract_location(entry: Any, description: str) -> str:
     return ""
 
 
-def extract_salary(entry: Any, description: str) -> str:
+SALARY_AMOUNT_PATTERN = re.compile(
+    r"(?:(?:up to|to|\u0434\u043e)\s*)?"
+    r"(?:\$|\u20ac|\u00a3)\s?\d[\d\s,.]*"
+    r"(?:\s?[-\u2013\u2014]\s?(?:\$|\u20ac|\u00a3)?\s?\d[\d\s,.]*)?"
+    r"(?:\s*(?:/|per)\s*(?:month|mo|hour|hr|year|yr))?",
+    flags=re.IGNORECASE,
+)
+EXPLICIT_SALARY_AMOUNT_PATTERN = re.compile(
+    r"(?:(?:up to|to|\u0434\u043e)\s*)?"
+    r"(?:(?:\$|\u20ac|\u00a3)\s?)?\d[\d\s,.]*"
+    r"(?:\s?[-\u2013\u2014]\s?(?:(?:\$|\u20ac|\u00a3)\s?)?\d[\d\s,.]*)?"
+    r"(?:\s*(?:USD|EUR|GBP))?"
+    r"(?:\s*(?:/|per)\s*(?:month|mo|hour|hr|year|yr))?",
+    flags=re.IGNORECASE,
+)
+SALARY_CONTEXT_PATTERN = re.compile(
+    r"\b(?:salary|compensation|rate|budget|pay|paid|monthly|hourly|"
+    r"\u0437\u0430\u0440\u043f\u043b\u0430\u0442\u0430|\u0432\u0438\u043b\u043a\u0430)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def salary_amounts(value: str) -> list[float]:
+    normalized = re.sub(r"(?<=\d)[\s,](?=\d)", "", value)
+    return [float(number) for number in re.findall(r"\d+(?:\.\d+)?", normalized)]
+
+
+def strip_salary_notes(value: str) -> str:
+    value = re.sub(r"\s*\([^)]*\)", " ", value)
+    value = re.sub(
+        r"\b(?:depending on experience|based on experience|depending on skills|"
+        r"gross|net|before taxes|after taxes)\b.*$",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    return compact_text(value).strip(" ,.;:")
+
+
+def salary_looks_plausible(value: str) -> bool:
+    amounts = salary_amounts(value)
+    if not amounts:
+        return False
+
+    highest_amount = max(amounts)
+    if highest_amount > 300_000:
+        return False
+
+    lowered = value.lower()
+    if highest_amount < 100 and not re.search(
+        r"(?:\$|\u20ac|\u00a3|\busd\b|\beur\b|\bgbp\b|(?:/|per)\s*(?:hour|hr))",
+        lowered,
+    ):
+        return False
+
+    if re.search(r"(?:/|per)\s*(?:year|yr)", lowered) and highest_amount < 5_000:
+        return False
+
+    return True
+
+
+def first_salary_amount(value: str, pattern: re.Pattern[str] = SALARY_AMOUNT_PATTERN) -> str:
+    salary_match = pattern.search(strip_salary_notes(value))
+    if not salary_match:
+        return ""
+
+    salary = compact_text(salary_match.group(0)).strip(" ,.;:")
+    return salary if salary_looks_plausible(salary) else ""
+
+
+def normalize_explicit_salary(value: str) -> str:
+    salary = first_salary_amount(value, EXPLICIT_SALARY_AMOUNT_PATTERN)
+    if salary:
+        return salary
+
+    return ""
+
+
+def extract_salary(entry: Any, title: str, description: str) -> str:
     salary = first_entry_value(entry, ["salary", "djinni_salary", "dou_salary"])
     if salary:
-        return compact_text(salary)
+        return normalize_explicit_salary(salary)
+
+    salary = first_salary_amount(title)
+    if salary:
+        return salary
 
     salary_line_match = re.search(
         r"(?im)^\s*(?:salary|compensation|\u0437\u0430\u0440\u043f\u043b\u0430\u0442\u0430|"
@@ -598,16 +683,19 @@ def extract_salary(entry: Any, description: str) -> str:
         description,
     )
     if salary_line_match:
-        return compact_text(salary_line_match.group(1))[:120]
+        salary = normalize_explicit_salary(salary_line_match.group(1))
+        if salary:
+            return salary
 
-    salary_match = re.search(
-        r"(?:\$|\u20ac|\u00a3)\s?\d[\d\s,]*(?:\s?[-\u2013]\s?"
-        r"(?:\$|\u20ac|\u00a3)?\s?\d[\d\s,]*)?"
-        r"(?:\s*(?:/|per)\s*(?:month|mo|hour|hr|year|yr))?",
-        description,
-        flags=re.IGNORECASE,
-    )
-    return compact_text(salary_match.group(0)) if salary_match else ""
+    for line in description.splitlines():
+        if not SALARY_CONTEXT_PATTERN.search(line):
+            continue
+
+        salary = first_salary_amount(line)
+        if salary:
+            return salary
+
+    return ""
 
 
 def normalize_entry(entry: Any, source: str) -> Vacancy | None:
@@ -624,7 +712,7 @@ def normalize_entry(entry: Any, source: str) -> Vacancy | None:
         title=title,
         company=extract_company(entry, title, description),
         location=extract_location(entry, description),
-        salary=extract_salary(entry, description),
+        salary=extract_salary(entry, title, description),
         url=url,
         published_date=parse_published_date(entry),
         description=description,
@@ -692,6 +780,17 @@ def keyword_matches_text(keyword: str, text: str) -> bool:
 def match_keywords(vacancy: Vacancy, keywords: list[str]) -> list[str]:
     haystack = f"{vacancy.title}\n{vacancy.description}"
     return [keyword for keyword in keywords if keyword_matches_text(keyword, haystack)]
+
+
+def title_prefilter_reason(vacancy: Vacancy, radar: RadarSettings) -> str:
+    if not radar.required_title_keywords:
+        return ""
+
+    for keyword in radar.required_title_keywords:
+        if keyword_matches_text(keyword, vacancy.title):
+            return ""
+
+    return "missing_developer_title"
 
 
 def negative_prefilter_reason(vacancy: Vacancy, radar: RadarSettings) -> str:
@@ -973,6 +1072,7 @@ def row_for_vacancy(
     analysis: AnalysisResult,
     headers: list[str],
     found_date: str,
+    radar: RadarSettings,
     row_defaults: dict[str, Any],
 ) -> list[Any]:
     values_by_header: dict[str, Any] = dict(row_defaults)
@@ -985,7 +1085,7 @@ def row_for_vacancy(
             "Location": vacancy.location,
             "Salary": vacancy.salary,
             "URL": vacancy.url,
-            "Published Date": vacancy.published_date,
+            "Published Date": format_published_date(vacancy.published_date, radar),
             "Matched Keywords": ", ".join(vacancy.matched_keywords),
             "Score": analysis.score,
             "Fit Reason": analysis.fit_reason,
@@ -996,15 +1096,35 @@ def row_for_vacancy(
     return [values_by_header.get(header, "") for header in headers]
 
 
-def format_found_date(radar: RadarSettings) -> str:
+def sheet_timezone(radar: RadarSettings) -> ZoneInfo:
     try:
-        found_date_timezone = ZoneInfo(radar.found_date_timezone)
+        return ZoneInfo(radar.found_date_timezone)
     except ZoneInfoNotFoundError as exc:
         raise RuntimeError(
             f"Config found_date_timezone={radar.found_date_timezone!r} is not a valid timezone."
         ) from exc
 
-    return datetime.now(found_date_timezone).strftime(radar.found_date_format)
+
+def format_sheet_datetime(value: datetime, radar: RadarSettings) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(sheet_timezone(radar)).strftime(radar.found_date_format)
+
+
+def format_found_date(radar: RadarSettings) -> str:
+    return format_sheet_datetime(datetime.now(timezone.utc), radar)
+
+
+def format_published_date(published_date: str, radar: RadarSettings) -> str:
+    if not published_date:
+        return ""
+
+    try:
+        parsed = datetime.fromisoformat(published_date.replace("Z", "+00:00"))
+    except ValueError:
+        return published_date
+
+    return format_sheet_datetime(parsed, radar)
 
 
 def append_analyzed_vacancies(
@@ -1019,7 +1139,7 @@ def append_analyzed_vacancies(
 
     found_date = format_found_date(radar)
     rows = [
-        row_for_vacancy(vacancy, analysis, headers, found_date, row_defaults)
+        row_for_vacancy(vacancy, analysis, headers, found_date, radar, row_defaults)
         for vacancy, analysis in analyzed
     ]
     worksheet.append_rows(rows, value_input_option="RAW")
@@ -1065,6 +1185,7 @@ def build_no_new_message(stats: RunStats) -> str:
         "Job radar: no new matching vacancies found.\n"
         f"Total fetched: {stats.total_fetched}\n"
         f"Matched by keywords: {stats.matched_by_keywords}\n"
+        f"Skipped by title prefilter: {stats.skipped_by_title_prefilter}\n"
         f"Skipped by negative prefilter: {stats.skipped_by_negative_prefilter}\n"
         f"New vacancies: {stats.new_vacancies}"
     )
@@ -1087,6 +1208,7 @@ def build_summary_message(
         "Job radar summary",
         f"Total fetched: {stats.total_fetched}",
         f"Matched by keywords: {stats.matched_by_keywords}",
+        f"Skipped by title prefilter: {stats.skipped_by_title_prefilter}",
         f"Skipped by negative prefilter: {stats.skipped_by_negative_prefilter}",
         f"New vacancies: {stats.new_vacancies}",
         f"Analyzed vacancies: {stats.analyzed_vacancies}",
@@ -1129,6 +1251,37 @@ def unique_new_vacancies(vacancies: list[Vacancy], existing_urls: set[str]) -> l
     return new_vacancies
 
 
+def vacancy_published_timestamp(vacancy: Vacancy) -> float:
+    try:
+        published_at = datetime.fromisoformat(vacancy.published_date)
+    except ValueError:
+        return 0.0
+
+    if published_at.tzinfo is None:
+        published_at = published_at.replace(tzinfo=timezone.utc)
+    return published_at.timestamp()
+
+
+def interleave_vacancies_by_source(vacancies: list[Vacancy]) -> list[Vacancy]:
+    grouped_vacancies: dict[str, list[Vacancy]] = {}
+    source_order: list[str] = []
+
+    for vacancy in sorted(vacancies, key=vacancy_published_timestamp, reverse=True):
+        if vacancy.source not in grouped_vacancies:
+            grouped_vacancies[vacancy.source] = []
+            source_order.append(vacancy.source)
+        grouped_vacancies[vacancy.source].append(vacancy)
+
+    interleaved: list[Vacancy] = []
+    while any(grouped_vacancies.values()):
+        for source in source_order:
+            source_vacancies = grouped_vacancies[source]
+            if source_vacancies:
+                interleaved.append(source_vacancies.pop(0))
+
+    return interleaved
+
+
 def run() -> None:
     setup_logging()
     config = load_config()
@@ -1154,6 +1307,12 @@ def run() -> None:
 
     prefiltered_vacancies: list[Vacancy] = []
     for vacancy in matched_vacancies:
+        title_reason = title_prefilter_reason(vacancy, config.radar)
+        if title_reason:
+            stats.skipped_by_title_prefilter += 1
+            logging.debug("[filter] title skip=%s | %s", title_reason, vacancy_label(vacancy))
+            continue
+
         reason = negative_prefilter_reason(vacancy, config.radar)
         if reason:
             stats.skipped_by_negative_prefilter += 1
@@ -1161,14 +1320,17 @@ def run() -> None:
             continue
         prefiltered_vacancies.append(vacancy)
 
-    new_vacancies = unique_new_vacancies(prefiltered_vacancies, existing_urls)
+    new_vacancies = interleave_vacancies_by_source(
+        unique_new_vacancies(prefiltered_vacancies, existing_urls)
+    )
     stats.new_vacancies = len(new_vacancies)
     skipped_existing = len(prefiltered_vacancies) - stats.new_vacancies
 
     logging.info(
-        "[filter] fetched=%s | matched=%s | neg_skip=%s | new=%s | tracked/dup=%s",
+        "[filter] fetched=%s | matched=%s | title_skip=%s | neg_skip=%s | new=%s | tracked/dup=%s",
         stats.total_fetched,
         stats.matched_by_keywords,
+        stats.skipped_by_title_prefilter,
         stats.skipped_by_negative_prefilter,
         stats.new_vacancies,
         skipped_existing,
@@ -1243,9 +1405,10 @@ def run() -> None:
     message = build_summary_message(stats, analyzed, config.min_score, warning=warning)
     send_telegram_message(config.telegram_bot_token, config.telegram_chat_id, message)
     logging.info(
-        "[done] fetched=%s | matched=%s | neg_skip=%s | new=%s | analyzed=%s | appended=%s | telegram=sent",
+        "[done] fetched=%s | matched=%s | title_skip=%s | neg_skip=%s | new=%s | analyzed=%s | appended=%s | telegram=sent",
         stats.total_fetched,
         stats.matched_by_keywords,
+        stats.skipped_by_title_prefilter,
         stats.skipped_by_negative_prefilter,
         stats.new_vacancies,
         stats.analyzed_vacancies,

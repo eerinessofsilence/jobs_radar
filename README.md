@@ -97,15 +97,18 @@ Edit `job_radar_config.json` to change non-secret radar behavior without touchin
 
 - `candidate_profile` - profile OpenAI uses to judge each vacancy.
 - `experience` - target seniority and years-of-experience limits.
+- `required_title_keywords` - developer-role title gate before OpenAI analysis.
 - `keywords` - title + description keyword filter before OpenAI analysis.
 - `negative_prefilter` - conservative title/text filters that skip obvious non-fits before OpenAI.
 - `default_rss_urls` - default DOU and Djinni RSS URLs.
 - `sheet_headers` - Google Sheet columns and append order.
-- `found_date_timezone` / `found_date_format` - display format for `Found Date`; the default config writes compact local timestamps like `29.04.2026 16:12`.
+- `found_date_timezone` / `found_date_format` - display format for `Found Date` and `Published Date`; the default config writes compact local timestamps like `29.04.2026 16:12`.
 - `analysis` - prompt guidance, max description length, and OpenAI system prompt.
 - `row_defaults` - default values such as `Status` and `Notes`.
 
 You can add extra `sheet_headers`; they will be appended as blank/default columns. Keep the existing core header names unless you also update the Python field mapping.
+
+`Salary` is best-effort because DOU and Djinni RSS entries do not always expose a dedicated salary field. The parser checks explicit salary fields first, then salary-like values in the title, then explicit salary/compensation lines in the description.
 
 Use `candidate_profile` for skills, preferred work type, domains, and deal-breakers. Use `experience` for seniority filtering:
 
@@ -116,6 +119,8 @@ Use `candidate_profile` for skills, preferred work type, domains, and deal-break
 - `guidance` - extra seniority rules in plain English.
 
 Use `negative_prefilter` to save OpenAI calls on obvious non-fits. `title_keywords` are checked against the vacancy title. `description_phrases` are checked against title + description, so keep them conservative to avoid false skips.
+
+Use `required_title_keywords` to keep the radar focused on developer roles. A vacancy still needs to match the general `keywords`, but its title must also look like a backend, full-stack, frontend, Python, React, Node.js, API, or integration developer/engineer role.
 
 By default, the script reads `job_radar_config.json` from the project directory. To use another file, set:
 
@@ -142,8 +147,8 @@ Add these repository secrets:
 Optional repository variables:
 
 - `JOB_RADAR_CONFIG` - defaults to `job_radar_config.json`.
-- `DOU_RSS_URLS` - defaults to `https://jobs.dou.ua/vacancies/feeds/`
-- `DJINNI_RSS_URLS` - defaults to `https://djinni.co/jobs/rss/`
+- `DOU_RSS_URLS` - defaults to developer-focused DOU category feeds: Python, Front End, Node.js, and React Native.
+- `DJINNI_RSS_URLS` - defaults to developer-focused Djinni category feeds: Python, Fullstack, React.js, Node.js, and React Native.
 - `MIN_SCORE` - defaults to `5`; only vacancies with this score or higher are appended and shown in the Telegram top list.
 - `MAX_JOBS_PER_RUN` - defaults to `20`; limits OpenAI analysis per run.
 - `OPENAI_MODEL` - defaults to `gpt-4o-mini`.
@@ -162,7 +167,7 @@ Default `INFO` logs are compact:
 
 - `[start]` - model, score range, minimum score, run limit, and feed count.
 - `[fetch]` - DOU / Djinni / total fetched vacancies.
-- `[filter]` - fetched, keyword-matched, negative-skipped, new, and tracked/duplicate counts.
+- `[filter]` - fetched, keyword-matched, title-skipped, negative-skipped, new, and tracked/duplicate counts.
 - `[analyze]` - how many new vacancies are queued for OpenAI.
 - `[result]` - one line per analyzed vacancy with score and `append` or `skip<N`.
 - `[sheet]` - rows eligible for append and rows skipped below `MIN_SCORE`.
@@ -201,14 +206,16 @@ This avoids browser automation and avoids scraping protected/private pages.
 1. Fetches DOU and Djinni RSS feeds.
 2. Parses RSS items into normalized vacancy records.
 3. Matches configured keywords against title and description.
-4. Applies `negative_prefilter` before OpenAI.
-5. Loads existing URLs from Google Sheets.
-6. Skips URLs already present in the sheet.
-7. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
-8. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric.
-9. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
-10. Appends analyzed vacancies whose score is at least `MIN_SCORE`.
-11. Sends a Telegram summary with counts and the top 5 vacancies by score.
+4. Applies `required_title_keywords` to keep the queue focused on developer roles.
+5. Applies `negative_prefilter` before OpenAI.
+6. Loads existing URLs from Google Sheets.
+7. Skips URLs already present in the sheet.
+8. Interleaves new vacancies by source before applying `MAX_JOBS_PER_RUN`, so one source does not crowd out the other.
+9. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
+10. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric.
+11. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
+12. Appends analyzed vacancies whose score is at least `MIN_SCORE`.
+13. Sends a Telegram summary with counts and the top 5 vacancies by score.
 
 ## Scoring
 
