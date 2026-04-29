@@ -1,12 +1,13 @@
 # Job Radar
 
-Automated job radar for GitHub Actions. It reads DOU and Djinni RSS feeds, filters vacancies by automation-related keywords, analyzes new vacancies with OpenAI, appends results to Google Sheets, and sends a Telegram summary.
+Automated job radar for GitHub Actions. It reads DOU and Djinni RSS feeds, filters vacancies by configured keywords, analyzes new vacancies with OpenAI, appends results to Google Sheets, and sends a Telegram summary.
 
 The script does not auto-apply to jobs. It only generates draft replies.
 
 ## Files
 
 - `job_radar.py` - main runner
+- `job_radar_config.json` - editable radar profile, keywords, headers, RSS defaults, and prompt settings
 - `requirements.txt` - Python dependencies
 - `.github/workflows/job-radar.yml` - GitHub Actions workflow
 - `.env.example` - local environment template
@@ -16,10 +17,20 @@ The script does not auto-apply to jobs. It only generates draft replies.
 Create a Google Sheet and add this exact header row in row 1:
 
 ```text
-Found Date | Source | Title | Company | Location | Salary | URL | Published Date | Matched Keywords | Score | Fit Reason | Risks | Generated Reply | Status | Applied | Applied Date | Notes
+Found Date | Source | Title | Company | Location | Salary | URL | Published Date | Matched Keywords | Score | Fit Reason | Risks | Generated Reply | Status | Notes
 ```
 
 The script will create the header row if the first worksheet is empty. If your sheet already has headers, keep the names above so appends land in the expected columns.
+
+The canonical header list lives in `job_radar_config.json` under `sheet_headers`.
+
+Recommended `Status` values:
+
+```text
+New | Interesting | Applied | Rejected | Later | No fit
+```
+
+If your existing sheet already has old `Applied` or `Applied Date` columns, delete them manually in Google Sheets after confirming you no longer need them. The script will not delete existing columns automatically.
 
 Find `GOOGLE_SHEET_ID` in the sheet URL:
 
@@ -80,6 +91,37 @@ python job_radar.py
 
 Fill `.env` before running. For local use, put `GOOGLE_SERVICE_ACCOUNT_JSON` on one line or wrap it in quotes if your shell requires it.
 
+## Radar Config
+
+Edit `job_radar_config.json` to change non-secret radar behavior without touching Python code:
+
+- `candidate_profile` - profile OpenAI uses to judge each vacancy.
+- `experience` - target seniority and years-of-experience limits.
+- `keywords` - title + description keyword filter before OpenAI analysis.
+- `negative_prefilter` - conservative title/text filters that skip obvious non-fits before OpenAI.
+- `default_rss_urls` - default DOU and Djinni RSS URLs.
+- `sheet_headers` - Google Sheet columns and append order.
+- `analysis` - prompt guidance, max description length, and OpenAI system prompt.
+- `row_defaults` - default values such as `Status` and `Notes`.
+
+You can add extra `sheet_headers`; they will be appended as blank/default columns. Keep the existing core header names unless you also update the Python field mapping.
+
+Use `candidate_profile` for skills, preferred work type, domains, and deal-breakers. Use `experience` for seniority filtering:
+
+- `target_level` - broad level, for example `Junior to Middle, not higher than Middle`.
+- `candidate_years` - your actual experience, for example `2 years commercial experience plus pet/freelance projects`.
+- `preferred_required_years` - vacancy requirements you prefer, for example `0-4 years`.
+- `max_required_years` - hard numeric threshold used in the prompt to penalize vacancies above that requirement.
+- `guidance` - extra seniority rules in plain English.
+
+Use `negative_prefilter` to save OpenAI calls on obvious non-fits. `title_keywords` are checked against the vacancy title. `description_phrases` are checked against title + description, so keep them conservative to avoid false skips.
+
+By default, the script reads `job_radar_config.json` from the project directory. To use another file, set:
+
+```env
+JOB_RADAR_CONFIG=path/to/another_config.json
+```
+
 ## GitHub Actions Setup
 
 Push this project to a GitHub repository. Then open:
@@ -98,17 +140,37 @@ Add these repository secrets:
 
 Optional repository variables:
 
+- `JOB_RADAR_CONFIG` - defaults to `job_radar_config.json`.
 - `DOU_RSS_URLS` - defaults to `https://jobs.dou.ua/vacancies/feeds/`
 - `DJINNI_RSS_URLS` - defaults to `https://djinni.co/jobs/rss/`
-- `MIN_SCORE` - defaults to `0`; controls which analyzed jobs appear in the Telegram top list.
+- `MIN_SCORE` - defaults to `5`; only vacancies with this score or higher are appended and shown in the Telegram top list.
 - `MAX_JOBS_PER_RUN` - defaults to `20`; limits OpenAI analysis per run.
 - `OPENAI_MODEL` - defaults to `gpt-4o-mini`.
+- `LOG_LEVEL` - defaults to `INFO`; use `DEBUG` for lower-level diagnostics.
+- `LOG_COLOR` - defaults to `auto`; use `always` to force ANSI colors or `never` to disable them.
 
 Multiple RSS URLs can be separated with commas, semicolons, or new lines.
 
 ## Running Manually
 
 Open the Actions tab in GitHub, select `Job Radar`, and click `Run workflow`.
+
+## Logs
+
+Default `INFO` logs are compact:
+
+- `[start]` - model, score range, minimum score, run limit, and feed count.
+- `[fetch]` - DOU / Djinni / total fetched vacancies.
+- `[filter]` - fetched, keyword-matched, negative-skipped, new, and tracked/duplicate counts.
+- `[analyze]` - how many new vacancies are queued for OpenAI.
+- `[result]` - one line per analyzed vacancy with score and `append` or `skip<N`.
+- `[sheet]` - rows eligible for append and rows skipped below `MIN_SCORE`.
+- `[done]` - final counters and Telegram status.
+
+Detailed URL, matched keywords, fit reason, and risks are logged only in `DEBUG`.
+
+Set `LOG_LEVEL=DEBUG` in `.env` or GitHub variables if you need lower-level diagnostics.
+Set `LOG_COLOR=always` if your terminal supports ANSI colors but auto-detection does not enable them. Set `LOG_COLOR=never` or `NO_COLOR=1` to disable colors.
 
 ## Schedule
 
@@ -137,18 +199,45 @@ This avoids browser automation and avoids scraping protected/private pages.
 
 1. Fetches DOU and Djinni RSS feeds.
 2. Parses RSS items into normalized vacancy records.
-3. Matches keywords against title and description.
-4. Loads existing URLs from Google Sheets.
-5. Skips URLs already present in the sheet.
-6. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
-7. Requests strict JSON from OpenAI.
-8. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
-9. Appends analyzed vacancies to Google Sheets.
-10. Sends a Telegram summary with counts and the top 5 vacancies by score.
+3. Matches configured keywords against title and description.
+4. Applies `negative_prefilter` before OpenAI.
+5. Loads existing URLs from Google Sheets.
+6. Skips URLs already present in the sheet.
+7. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
+8. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric.
+9. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
+10. Appends analyzed vacancies whose score is at least `MIN_SCORE`.
+11. Sends a Telegram summary with counts and the top 5 vacancies by score.
 
-Rows are appended with:
+## Scoring
+
+The score is configured in `job_radar_config.json` under `analysis`:
+
+- `score_min` - default `1`
+- `score_max` - default `10`
+- `scoring_guidance` - general scoring rules
+- `scoring_rubric` - concrete meaning of scores
+
+Keywords are only the first filter: a vacancy must match at least one keyword before OpenAI analyzes it. Then `negative_prefilter` skips obvious non-fits. The final score is not a keyword count. OpenAI evaluates the whole remaining vacancy using the rubric: title, responsibilities, tech stack, experience requirements, remote/freelance/part-time/project fit, company/context clarity, salary if present, and risks.
+
+Normal analyzed vacancies should receive `1-10`. Score `0` is reserved by the script for technical failures such as invalid OpenAI JSON or API errors.
+
+Default appended row values are configured in `job_radar_config.json`:
 
 - `Status` = `New`
-- `Applied` = `false`
-- `Applied Date` = empty
 - `Notes` = empty
+
+## Troubleshooting
+
+### OpenAI 429 insufficient_quota
+
+If the log says `OpenAI quota is exhausted` or `insufficient_quota`, the RSS and Google Sheets parts are working, but the OpenAI API key cannot make paid API calls.
+
+Check:
+
+1. Billing is active in your OpenAI account.
+2. The API key belongs to the correct OpenAI project.
+3. The project has available usage budget / limits.
+4. `OPENAI_API_KEY` in `.env` or GitHub Secrets is the current key.
+
+After fixing billing or limits, run `python job_radar.py` again. The script does not append vacancies that were not analyzed because of exhausted quota.

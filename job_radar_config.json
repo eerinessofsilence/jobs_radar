@@ -1,0 +1,94 @@
+{
+  "candidate_profile": "I am looking for freelance, part-time, remote, or project-based work related to backend and full-stack development, including API integrations and modern web applications. I specialize in Python (Django, FastAPI), REST APIs, PostgreSQL, and Docker, and also have experience building frontend interfaces using React and TypeScript. I am interested in projects involving system integrations, backend architecture, full-stack web applications, and internal tools for businesses. I prefer practical development tasks combining backend and frontend work. I am also open to frontend-focused roles with React, and interested in exploring React Native for mobile development. I do not want office-only jobs, unrelated sales roles, or positions requiring heavy enterprise experience unless development is the core focus.",
+  "experience": {
+    "target_level": "Junior to Middle, not higher than Middle",
+    "candidate_years": "3",
+    "preferred_required_years": "0-3 years",
+    "max_required_years": 3,
+    "guidance": "Prefer roles that are realistic for junior, strong junior, or middle-level candidates. Penalize senior, lead, architect, staff, principal, head-of-engineering, and roles that require many years of deep enterprise experience."
+  },
+  "keywords": [
+    "Python",
+    "Django",
+    "FastAPI",
+    "TypeScript",
+    "Next.js",
+    "Vite.js",
+    "React",
+    "React Native (learning)",
+    "Docker",
+    "PostgreSQL",
+    "REST API",
+    "backend development",
+    "frontend development",
+    "full-stack development",
+    "API integration",
+    "web applications",
+    "backend architecture",
+    "system integration"
+  ],
+  "negative_prefilter": {
+    "enabled": true,
+    "title_keywords": [
+      "Senior",
+      "Lead",
+      "Tech Lead",
+      "Team Lead",
+      "Architect",
+      "Principal",
+      "Staff",
+      "Head of",
+      "CTO",
+      "Engineering Manager",
+      "Sales",
+      "Account Manager",
+      "Recruiter",
+      "HR"
+    ],
+    "description_phrases": [
+      "office only",
+      "only office",
+      "full office",
+      "work from office",
+      "5+ years",
+      "6+ years",
+      "7+ years",
+      "8+ years",
+      "10+ years"
+    ]
+  },
+  "default_rss_urls": {
+    "dou": ["https://jobs.dou.ua/vacancies/feeds/"],
+    "djinni": ["https://djinni.co/jobs/rss/"]
+  },
+  "sheet_headers": [
+    "Found Date",
+    "Source",
+    "Title",
+    "Company",
+    "Location",
+    "Salary",
+    "URL",
+    "Published Date",
+    "Matched Keywords",
+    "Score",
+    "Fit Reason",
+    "Risks",
+    "Generated Reply",
+    "Status",
+    "Notes"
+  ],
+  "analysis": {
+    "score_min": 1,
+    "score_max": 10,
+    "description_max_chars": 3000,
+    "openai_system_prompt": "You are a careful job-fit analyst. Return valid JSON only. Do not wrap JSON in markdown.",
+    "scoring_guidance": "Score the full vacancy fit, not just keyword count. Consider stack, responsibilities, seniority, work format, company clarity, salary if present, and risks.",
+    "scoring_rubric": "10 exact fit. 8-9 strong fit, minor gaps. 6-7 decent fit, moderate gaps. 5 borderline but worth tracking. 3-4 weak fit or too senior. 1-2 unrelated, office-only, sales/recruiting, or clearly above target level.",
+    "generated_reply_instruction": "Return concise fields. fit_reason and risks: max 1 sentence each. generated_reply: max 700 characters. Do not claim that an application was sent."
+  },
+  "row_defaults": {
+    "Status": "New",
+    "Notes": ""
+  }
+}
