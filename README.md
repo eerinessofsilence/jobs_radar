@@ -6,8 +6,12 @@ The script does not auto-apply to jobs. It only generates draft replies.
 
 ## Files
 
-- `job_radar.py` - main runner
-- `job_radar_config.json` - editable radar profile, keywords, headers, RSS defaults, and prompt settings
+- `job_radar.py` - thin entry point for the scheduled radar run
+- `reset_sheet.py` - clears previous vacancy rows from Google Sheets without changing formatting
+- `radar/` - application package with RSS, filters, OpenAI analysis, Sheets, Telegram, config loading, and orchestration
+- `tests/` - unit tests
+- `job_radar_profile.json` - personal search profile, keywords, experience limits, negative filters, and RSS defaults
+- `job_radar_settings.json` - software settings such as headers, date formatting, scoring prompt, and row defaults
 - `requirements.txt` - Python dependencies
 - `.github/workflows/job-radar.yml` - GitHub Actions workflow
 - `.env.example` - local environment template
@@ -22,7 +26,7 @@ Found Date | Source | Title | Company | Location | Salary | URL | Published Date
 
 The script will create the header row if the first worksheet is empty. If your sheet already has headers, keep the names above so appends land in the expected columns.
 
-The canonical header list lives in `job_radar_config.json` under `sheet_headers`.
+The canonical header list lives in `job_radar_settings.json` under `sheet_headers`.
 
 Recommended `Status` values:
 
@@ -91,9 +95,26 @@ python job_radar.py
 
 Fill `.env` before running. For local use, put `GOOGLE_SERVICE_ACCOUNT_JSON` on one line or wrap it in quotes if your shell requires it.
 
+## Reset Google Sheet
+
+Use `reset_sheet.py` to clear old vacancy rows while keeping the header row and existing Google Sheets formatting:
+
+```bash
+python reset_sheet.py --dry-run
+python reset_sheet.py --yes
+```
+
+The reset script uses only `GOOGLE_SHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`, and the radar config files. It clears values from row 2 down via the Google Sheets API, so formatting, column widths, colors, filters, and validation rules are not changed.
+
+By default it resets the first worksheet. To target a specific worksheet tab, set `RESET_SHEET_WORKSHEET` or pass `--worksheet`:
+
+```bash
+python reset_sheet.py --yes --worksheet Sheet1
+```
+
 ## Radar Config
 
-Edit `job_radar_config.json` to change non-secret radar behavior without touching Python code:
+Edit `job_radar_profile.json` for personal search criteria:
 
 - `candidate_profile` - profile OpenAI uses to judge each vacancy.
 - `experience` - target seniority and years-of-experience limits.
@@ -101,6 +122,9 @@ Edit `job_radar_config.json` to change non-secret radar behavior without touchin
 - `keywords` - title + description keyword filter before OpenAI analysis.
 - `negative_prefilter` - conservative title/text filters that skip obvious non-fits before OpenAI.
 - `default_rss_urls` - default DOU and Djinni RSS URLs.
+
+Edit `job_radar_settings.json` for software behavior:
+
 - `sheet_headers` - Google Sheet columns and append order.
 - `found_date_timezone` / `found_date_format` - display format for `Found Date` and `Published Date`; the default config writes compact local timestamps like `29.04.2026 16:12`.
 - `analysis` - prompt guidance, max description length, and OpenAI system prompt.
@@ -115,18 +139,23 @@ Use `candidate_profile` for skills, preferred work type, domains, and deal-break
 - `target_level` - broad level, for example `Junior to Middle, not higher than Middle`.
 - `candidate_years` - your actual experience, for example `2 years commercial experience plus pet/freelance projects`.
 - `preferred_required_years` - vacancy requirements you prefer, for example `0-4 years`.
-- `max_required_years` - hard numeric threshold used in the prompt to penalize vacancies above that requirement.
+- `max_required_years` - hard numeric threshold used to skip vacancies that require more years before OpenAI analysis.
 - `guidance` - extra seniority rules in plain English.
+
+The experience prefilter rejects clear requirements above `max_required_years`, including forms like `4+ years`, `at least 4 years`, `more than 3 years`, `3-5 years`, and `Experience: 4 years`.
 
 Use `negative_prefilter` to save OpenAI calls on obvious non-fits. `title_keywords` are checked against the vacancy title. `description_phrases` are checked against title + description, so keep them conservative to avoid false skips.
 
 Use `required_title_keywords` to keep the radar focused on developer roles. A vacancy still needs to match the general `keywords`, but its title must also look like a backend, full-stack, frontend, Python, React, Node.js, API, or integration developer/engineer role.
 
-By default, the script reads `job_radar_config.json` from the project directory. To use another file, set:
+By default, the script reads `job_radar_profile.json` and `job_radar_settings.json` from the project directory. To use different split config files, set:
 
 ```env
-JOB_RADAR_CONFIG=path/to/another_config.json
+JOB_RADAR_PROFILE_CONFIG=path/to/profile.json
+JOB_RADAR_SETTINGS_CONFIG=path/to/settings.json
 ```
+
+Legacy single-file config is still supported through `JOB_RADAR_CONFIG`.
 
 ## GitHub Actions Setup
 
@@ -146,7 +175,9 @@ Add these repository secrets:
 
 Optional repository variables:
 
-- `JOB_RADAR_CONFIG` - defaults to `job_radar_config.json`.
+- `JOB_RADAR_PROFILE_CONFIG` - defaults to `job_radar_profile.json`.
+- `JOB_RADAR_SETTINGS_CONFIG` - defaults to `job_radar_settings.json`.
+- `JOB_RADAR_CONFIG` - optional legacy single-file config override.
 - `DOU_RSS_URLS` - defaults to developer-focused DOU category feeds: Python, Front End, Node.js, and React Native.
 - `DJINNI_RSS_URLS` - defaults to developer-focused Djinni category feeds: Python, Fullstack, React.js, Node.js, and React Native.
 - `MIN_SCORE` - defaults to `5`; only vacancies with this score or higher are appended and shown in the Telegram top list.
@@ -156,6 +187,14 @@ Optional repository variables:
 - `LOG_COLOR` - defaults to `auto`; use `always` to force ANSI colors or `never` to disable them.
 
 Multiple RSS URLs can be separated with commas, semicolons, or new lines.
+
+## Tests
+
+Run unit tests locally with:
+
+```bash
+python -m unittest discover -s tests
+```
 
 ## Running Manually
 
@@ -167,7 +206,7 @@ Default `INFO` logs are compact:
 
 - `[start]` - model, score range, minimum score, run limit, and feed count.
 - `[fetch]` - DOU / Djinni / total fetched vacancies.
-- `[filter]` - fetched, keyword-matched, title-skipped, negative-skipped, new, and tracked/duplicate counts.
+- `[filter]` - fetched, keyword-matched, title-skipped, experience-skipped, negative-skipped, new, and tracked/duplicate counts.
 - `[analyze]` - how many new vacancies are queued for OpenAI.
 - `[result]` - one line per analyzed vacancy with score and `append` or `skip<N`.
 - `[sheet]` - rows eligible for append and rows skipped below `MIN_SCORE`.
@@ -207,30 +246,31 @@ This avoids browser automation and avoids scraping protected/private pages.
 2. Parses RSS items into normalized vacancy records.
 3. Matches configured keywords against title and description.
 4. Applies `required_title_keywords` to keep the queue focused on developer roles.
-5. Applies `negative_prefilter` before OpenAI.
-6. Loads existing URLs from Google Sheets.
-7. Skips URLs already present in the sheet.
-8. Interleaves new vacancies by source before applying `MAX_JOBS_PER_RUN`, so one source does not crowd out the other.
-9. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
-10. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric.
-11. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
-12. Appends analyzed vacancies whose score is at least `MIN_SCORE`.
-13. Sends a Telegram summary with counts and the top 5 vacancies by score.
+5. Applies the hard experience prefilter before OpenAI.
+6. Applies `negative_prefilter` before OpenAI.
+7. Loads existing URLs from Google Sheets.
+8. Skips URLs already present in the sheet.
+9. Interleaves new vacancies by source before applying `MAX_JOBS_PER_RUN`, so one source does not crowd out the other.
+10. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
+11. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric.
+12. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
+13. Appends analyzed vacancies whose score is at least `MIN_SCORE`.
+14. Sends a Telegram summary with counts and the top 5 vacancies by score.
 
 ## Scoring
 
-The score is configured in `job_radar_config.json` under `analysis`:
+The score is configured in `job_radar_settings.json` under `analysis`:
 
 - `score_min` - default `1`
 - `score_max` - default `10`
 - `scoring_guidance` - general scoring rules
 - `scoring_rubric` - concrete meaning of scores
 
-Keywords are only the first filter: a vacancy must match at least one keyword before OpenAI analyzes it. Then `negative_prefilter` skips obvious non-fits. The final score is not a keyword count. OpenAI evaluates the whole remaining vacancy using the rubric: title, responsibilities, tech stack, experience requirements, remote/freelance/part-time/project fit, company/context clarity, salary if present, and risks.
+Keywords are only the first filter: a vacancy must match at least one keyword before OpenAI analyzes it. Then the experience prefilter and `negative_prefilter` skip obvious non-fits. The final score is not a keyword count. OpenAI evaluates the whole remaining vacancy using the rubric: title, responsibilities, tech stack, experience requirements, remote/freelance/part-time/project fit, company/context clarity, salary if present, and risks.
 
 Normal analyzed vacancies should receive `1-10`. Score `0` is reserved by the script for technical failures such as invalid OpenAI JSON or API errors.
 
-Default appended row values are configured in `job_radar_config.json`:
+Default appended row values are configured in `job_radar_settings.json`:
 
 - `Status` = `New`
 - `Notes` = empty
