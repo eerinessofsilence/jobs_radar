@@ -1,6 +1,18 @@
 import unittest
 
-from radar.openai_analysis import parse_openai_json, strip_markdown_fences
+from radar.models import AnalysisResult
+from radar.openai_analysis import (
+    attach_openai_usage,
+    estimate_openai_cost_usd,
+    parse_openai_json,
+    strip_markdown_fences,
+)
+
+
+class FakeUsage:
+    prompt_tokens = 1000
+    completion_tokens = 250
+    total_tokens = 1250
 
 
 class OpenAIAnalysisTest(unittest.TestCase):
@@ -29,6 +41,30 @@ class OpenAIAnalysisTest(unittest.TestCase):
 
         self.assertEqual(10, result.score)
         self.assertEqual("Strong", result.fit_reason)
+
+    def test_estimate_openai_cost_uses_per_million_prices(self) -> None:
+        self.assertAlmostEqual(
+            0.0003,
+            estimate_openai_cost_usd(
+                prompt_tokens=1000,
+                completion_tokens=250,
+                input_cost_per_1m=0.1,
+                output_cost_per_1m=0.8,
+            ),
+        )
+
+    def test_attach_openai_usage_adds_tokens_and_cost(self) -> None:
+        result = attach_openai_usage(
+            AnalysisResult(score=7, fit_reason="", risks="", generated_reply=""),
+            FakeUsage(),
+            input_cost_per_1m=0.1,
+            output_cost_per_1m=0.8,
+        )
+
+        self.assertEqual(1000, result.prompt_tokens)
+        self.assertEqual(250, result.completion_tokens)
+        self.assertEqual(1250, result.total_tokens)
+        self.assertAlmostEqual(0.0003, result.estimated_cost_usd or 0)
 
 
 if __name__ == "__main__":

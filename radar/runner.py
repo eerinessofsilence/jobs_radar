@@ -16,7 +16,7 @@ from .logging_utils import log_run_start, setup_logging
 from .models import AnalysisResult, OpenAIQuotaError, RunStats, Vacancy
 from .openai_analysis import analyze_vacancy
 from .rss import collect_email_alert_vacancies, collect_rss_vacancies
-from .sheets import append_analyzed_vacancies, open_sheet
+from .sheets import append_analyzed_vacancies, append_seen_vacancies, open_sheet
 from .settings import load_config
 from .telegram import build_no_new_message, build_summary_message, send_telegram_message
 from .text import keywords_label, truncate_text, vacancy_label
@@ -67,14 +67,49 @@ def interleave_vacancies_by_source(vacancies: list[Vacancy]) -> list[Vacancy]:
     return interleaved
 
 
+def combine_warning(existing_warning: str, new_warning: str) -> str:
+    if not existing_warning:
+        return new_warning
+    return f"{existing_warning} {new_warning}"
+
+
+def log_openai_usage(vacancy: Vacancy, analysis: AnalysisResult) -> None:
+    if not analysis.total_tokens:
+        return
+
+    cost = (
+        f"${analysis.estimated_cost_usd:.6f}"
+        if analysis.estimated_cost_usd is not None
+        else "unconfigured"
+    )
+    logging.info(
+        "[openai] tokens=%s | input=%s | output=%s | cost=%s | %s",
+        analysis.total_tokens,
+        analysis.prompt_tokens,
+        analysis.completion_tokens,
+        cost,
+        vacancy_label(vacancy),
+    )
+
+
 def run() -> None:
     setup_logging()
     config = load_config()
     log_run_start(config)
-    openai_client = OpenAI(api_key=config.openai_api_key, max_retries=0)
+    openai_client = OpenAI(
+        api_key=config.openai_api_key,
+        timeout=config.openai_timeout_seconds,
+        max_retries=config.openai_max_retries,
+    )
 
-    worksheet, headers, existing_urls = open_sheet(config)
-    logging.debug("[sheet] Connected. Existing tracked URLs: %s", len(existing_urls))
+    sheets = open_sheet(config)
+    tracked_urls = sheets.existing_urls | sheets.seen_urls
+    logging.debug(
+        "[sheet] Connected. Existing rows=%s | seen rows=%s | tracked URLs=%s",
+        len(sheets.existing_urls),
+        len(sheets.seen_urls),
+        len(tracked_urls),
+    )
 
     rss_vacancies = collect_rss_vacancies(config)
     email_vacancies = collect_email_alert_vacancies()
@@ -112,13 +147,13 @@ def run() -> None:
         prefiltered_vacancies.append(vacancy)
 
     new_vacancies = interleave_vacancies_by_source(
-        unique_new_vacancies(prefiltered_vacancies, existing_urls)
+        unique_new_vacancies(prefiltered_vacancies, tracked_urls)
     )
     stats.new_vacancies = len(new_vacancies)
     skipped_existing = len(prefiltered_vacancies) - stats.new_vacancies
 
     logging.info(
-        "[filter] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | neg_skip=%s | new=%s | tracked/dup=%s",
+        "[filter] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | neg_skip=%s | new=%s | tracked/seen/dup=%s",
         stats.total_fetched,
         stats.matched_by_keywords,
         stats.skipped_by_title_prefilter,
@@ -155,12 +190,22 @@ def run() -> None:
             keywords_label(vacancy.matched_keywords),
         )
         try:
-            analysis = analyze_vacancy(openai_client, config.openai_model, vacancy, config.radar)
+            analysis = analyze_vacancy(
+                openai_client,
+                config.openai_model,
+                vacancy,
+                config.radar,
+                max_completion_tokens=config.openai_max_completion_tokens,
+                timeout_seconds=config.openai_timeout_seconds,
+                input_cost_per_1m=config.openai_input_cost_per_1m,
+                output_cost_per_1m=config.openai_output_cost_per_1m,
+            )
         except OpenAIQuotaError as exc:
             warning = str(exc)
             logging.error("[openai] %s", warning)
             break
 
+        log_openai_usage(vacancy, analysis)
         action = "append" if analysis.score >= config.min_score else f"skip<{config.min_score}"
         logging.info(
             "[result] %s/%s | score=%s/%s | %s | %s",
@@ -187,12 +232,23 @@ def run() -> None:
         config.min_score,
     )
     stats.appended_vacancies = append_analyzed_vacancies(
-        worksheet,
-        headers,
+        sheets.worksheet,
+        sheets.headers,
         analyzed_to_append,
         config.radar,
         config.radar.row_defaults,
     )
+    try:
+        stats.seen_vacancies = append_seen_vacancies(
+            sheets.seen_worksheet,
+            sheets.seen_headers,
+            analyzed,
+            config.radar,
+            config.min_score,
+        )
+    except Exception as exc:
+        logging.exception("[sheet] Failed to mark analyzed vacancies in Seen worksheet.")
+        warning = combine_warning(warning, f"Seen tracking failed: {exc}")
 
     message = build_summary_message(stats, analyzed, config.min_score, warning=warning)
     send_telegram_message(config.telegram_bot_token, config.telegram_chat_id, message)

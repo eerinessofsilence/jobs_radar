@@ -47,6 +47,24 @@ def env_int(name: str, default: int, minimum: int | None = None) -> int:
     return value
 
 
+def env_float(name: str, default: float | None = None, minimum: float | None = None) -> float | None:
+    raw_value = os.getenv(name)
+    if raw_value in (None, ""):
+        return default
+
+    try:
+        value = float(raw_value)
+    except ValueError:
+        logging.warning("Invalid number for %s=%r. Using default %s.", name, raw_value, default)
+        return default
+
+    if minimum is not None and value < minimum:
+        logging.warning("%s must be at least %s. Using default %s.", name, minimum, default)
+        return default
+
+    return value
+
+
 def require_env(name: str) -> str:
     value = os.getenv(name)
     if not value:
@@ -260,4 +278,9 @@ def load_config() -> Config:
         min_score=min_score,
         max_jobs_per_run=env_int("MAX_JOBS_PER_RUN", 20, minimum=1),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
+        openai_timeout_seconds=env_int("OPENAI_TIMEOUT_SECONDS", 60, minimum=1),
+        openai_max_retries=env_int("OPENAI_MAX_RETRIES", 2, minimum=0),
+        openai_max_completion_tokens=env_int("OPENAI_MAX_COMPLETION_TOKENS", 700, minimum=1),
+        openai_input_cost_per_1m=env_float("OPENAI_INPUT_COST_PER_1M", minimum=0),
+        openai_output_cost_per_1m=env_float("OPENAI_OUTPUT_COST_PER_1M", minimum=0),
     )

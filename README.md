@@ -28,6 +28,8 @@ The script will create the header row if the first worksheet is empty. If your s
 
 The canonical header list lives in `job_radar_settings.json` under `sheet_headers`.
 
+The script also creates/uses a `Seen` worksheet tab automatically. It stores every URL that was successfully analyzed by OpenAI, including vacancies skipped because their score is below `MIN_SCORE`. This prevents the same low-score vacancy from being analyzed and paid for again on the next run. Technical failures with score `0` are not marked seen, so they can be retried later.
+
 Recommended `Status` values:
 
 ```text
@@ -112,6 +114,12 @@ By default it resets the first worksheet. To target a specific worksheet tab, se
 python reset_sheet.py --yes --worksheet Sheet1
 ```
 
+The reset command does not clear the `Seen` worksheet unless you explicitly target it:
+
+```bash
+python reset_sheet.py --yes --worksheet Seen
+```
+
 ## Radar Config
 
 Edit `job_radar_profile.json` for personal search criteria:
@@ -183,6 +191,10 @@ Optional repository variables:
 - `MIN_SCORE` - defaults to `5`; only vacancies with this score or higher are appended and shown in the Telegram top list.
 - `MAX_JOBS_PER_RUN` - defaults to `20`; limits OpenAI analysis per run.
 - `OPENAI_MODEL` - defaults to `gpt-4o-mini`.
+- `OPENAI_TIMEOUT_SECONDS` - defaults to `60`; timeout for OpenAI analysis calls.
+- `OPENAI_MAX_RETRIES` - defaults to `2`; retry count handled by the OpenAI client.
+- `OPENAI_MAX_COMPLETION_TOKENS` - defaults to `700`; response token cap for each analysis.
+- `OPENAI_INPUT_COST_PER_1M` / `OPENAI_OUTPUT_COST_PER_1M` - optional current model prices per 1M tokens. When set, logs include estimated OpenAI cost per analyzed vacancy.
 - `LOG_LEVEL` - defaults to `INFO`; use `DEBUG` for lower-level diagnostics.
 - `LOG_COLOR` - defaults to `auto`; use `always` to force ANSI colors or `never` to disable them.
 
@@ -208,6 +220,7 @@ Default `INFO` logs are compact:
 - `[fetch]` - DOU / Djinni / total fetched vacancies.
 - `[filter]` - fetched, keyword-matched, title-skipped, experience-skipped, negative-skipped, new, and tracked/duplicate counts.
 - `[analyze]` - how many new vacancies are queued for OpenAI.
+- `[openai]` - token usage per analyzed vacancy and estimated cost if token prices are configured.
 - `[result]` - one line per analyzed vacancy with score and `append` or `skip<N`.
 - `[sheet]` - rows eligible for append and rows skipped below `MIN_SCORE`.
 - `[done]` - final counters and Telegram status.
@@ -252,10 +265,11 @@ This avoids browser automation and avoids scraping protected/private pages.
 8. Skips URLs already present in the sheet.
 9. Interleaves new vacancies by source before applying `MAX_JOBS_PER_RUN`, so one source does not crowd out the other.
 10. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
-11. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric.
+11. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric, timeout, retry count, and completion-token cap.
 12. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
 13. Appends analyzed vacancies whose score is at least `MIN_SCORE`.
-14. Sends a Telegram summary with counts and the top 5 vacancies by score.
+14. Marks successfully analyzed vacancies in the `Seen` worksheet to avoid re-analyzing low-score repeats.
+15. Sends a Telegram summary with counts and the top 5 vacancies by score.
 
 ## Scoring
 

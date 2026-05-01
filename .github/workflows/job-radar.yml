@@ -50,5 +50,10 @@ jobs:
           MIN_SCORE: ${{ vars.MIN_SCORE }}
           MAX_JOBS_PER_RUN: ${{ vars.MAX_JOBS_PER_RUN }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          OPENAI_TIMEOUT_SECONDS: ${{ vars.OPENAI_TIMEOUT_SECONDS }}
+          OPENAI_MAX_RETRIES: ${{ vars.OPENAI_MAX_RETRIES }}
+          OPENAI_MAX_COMPLETION_TOKENS: ${{ vars.OPENAI_MAX_COMPLETION_TOKENS }}
+          OPENAI_INPUT_COST_PER_1M: ${{ vars.OPENAI_INPUT_COST_PER_1M }}
+          OPENAI_OUTPUT_COST_PER_1M: ${{ vars.OPENAI_OUTPUT_COST_PER_1M }}
           LOG_LEVEL: ${{ vars.LOG_LEVEL }}
           LOG_COLOR: ${{ vars.LOG_COLOR }}

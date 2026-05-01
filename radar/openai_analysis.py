@@ -9,6 +9,10 @@ from openai import OpenAI, RateLimitError
 from .models import AnalysisResult, OpenAIQuotaError, RadarSettings, Vacancy
 
 
+DEFAULT_ANALYSIS_TIMEOUT_SECONDS = 60
+DEFAULT_MAX_COMPLETION_TOKENS = 700
+
+
 def strip_markdown_fences(content: str) -> str:
     content = content.strip()
     fence_match = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", content, flags=re.DOTALL | re.IGNORECASE)
@@ -77,6 +81,55 @@ def parse_openai_json(content: str, score_min: int, score_max: int) -> AnalysisR
         risks=f"OpenAI returned invalid JSON: {last_error}. Raw response: {content[:500]}",
         generated_reply="",
     )
+
+
+def estimate_openai_cost_usd(
+    prompt_tokens: int,
+    completion_tokens: int,
+    input_cost_per_1m: float | None,
+    output_cost_per_1m: float | None,
+) -> float | None:
+    if input_cost_per_1m is None or output_cost_per_1m is None:
+        return None
+    return (prompt_tokens / 1_000_000 * input_cost_per_1m) + (
+        completion_tokens / 1_000_000 * output_cost_per_1m
+    )
+
+
+def openai_usage_value(usage: object, name: str) -> int:
+    if isinstance(usage, dict):
+        value = usage.get(name, 0)
+    else:
+        value = getattr(usage, name, 0)
+
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def attach_openai_usage(
+    analysis: AnalysisResult,
+    usage: object | None,
+    input_cost_per_1m: float | None,
+    output_cost_per_1m: float | None,
+) -> AnalysisResult:
+    if usage is None:
+        return analysis
+
+    analysis.prompt_tokens = openai_usage_value(usage, "prompt_tokens")
+    analysis.completion_tokens = openai_usage_value(usage, "completion_tokens")
+    analysis.total_tokens = (
+        openai_usage_value(usage, "total_tokens")
+        or analysis.prompt_tokens + analysis.completion_tokens
+    )
+    analysis.estimated_cost_usd = estimate_openai_cost_usd(
+        analysis.prompt_tokens,
+        analysis.completion_tokens,
+        input_cost_per_1m,
+        output_cost_per_1m,
+    )
+    return analysis
 
 
 def is_openai_insufficient_quota(exc: RateLimitError) -> bool:
@@ -164,11 +217,21 @@ Return only strict JSON with exactly these keys:
 """.strip()
 
 
-def analyze_vacancy(client: OpenAI, model: str, vacancy: Vacancy, radar: RadarSettings) -> AnalysisResult:
+def analyze_vacancy(
+    client: OpenAI,
+    model: str,
+    vacancy: Vacancy,
+    radar: RadarSettings,
+    max_completion_tokens: int = DEFAULT_MAX_COMPLETION_TOKENS,
+    timeout_seconds: int = DEFAULT_ANALYSIS_TIMEOUT_SECONDS,
+    input_cost_per_1m: float | None = None,
+    output_cost_per_1m: float | None = None,
+) -> AnalysisResult:
     try:
         response = client.chat.completions.create(
             model=model,
             temperature=0.2,
+            max_completion_tokens=max_completion_tokens,
             response_format={"type": "json_object"},
             messages=[
                 {
@@ -177,9 +240,16 @@ def analyze_vacancy(client: OpenAI, model: str, vacancy: Vacancy, radar: RadarSe
                 },
                 {"role": "user", "content": vacancy_prompt(vacancy, radar)},
             ],
+            timeout=timeout_seconds,
         )
         content = response.choices[0].message.content or ""
-        return parse_openai_json(content, radar.score_min, radar.score_max)
+        analysis = parse_openai_json(content, radar.score_min, radar.score_max)
+        return attach_openai_usage(
+            analysis,
+            response.usage,
+            input_cost_per_1m,
+            output_cost_per_1m,
+        )
     except RateLimitError as exc:
         if is_openai_insufficient_quota(exc):
             raise OpenAIQuotaError(

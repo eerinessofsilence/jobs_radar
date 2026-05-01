@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import requests
-
+from .http_utils import retry_session
 from .models import AnalysisResult, RunStats, Vacancy
 
 
@@ -21,13 +20,19 @@ def telegram_chunks(message: str, max_length: int = 3900) -> list[str]:
 
 def send_telegram_message(bot_token: str, chat_id: str, message: str) -> None:
     api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    for chunk in telegram_chunks(message):
-        response = requests.post(
-            api_url,
-            json={"chat_id": chat_id, "text": chunk, "disable_web_page_preview": True},
-            timeout=30,
-        )
-        response.raise_for_status()
+    with retry_session(
+        total=2,
+        backoff_factor=0.5,
+        allowed_methods=("POST",),
+        read_retries=0,
+    ) as session:
+        for chunk in telegram_chunks(message):
+            response = session.post(
+                api_url,
+                json={"chat_id": chat_id, "text": chunk, "disable_web_page_preview": True},
+                timeout=30,
+            )
+            response.raise_for_status()
 
 
 def build_no_new_message(stats: RunStats) -> str:
@@ -65,6 +70,7 @@ def build_summary_message(
         f"New vacancies: {stats.new_vacancies}",
         f"Analyzed vacancies: {stats.analyzed_vacancies}",
         f"Appended vacancies: {stats.appended_vacancies}",
+        f"Marked seen: {stats.seen_vacancies}",
     ]
 
     if min_score > 0:

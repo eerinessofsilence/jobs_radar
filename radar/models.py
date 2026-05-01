@@ -45,6 +45,11 @@ class Config:
     min_score: int = 0
     max_jobs_per_run: int = 20
     openai_model: str = "gpt-4o-mini"
+    openai_timeout_seconds: int = 60
+    openai_max_retries: int = 2
+    openai_max_completion_tokens: int = 700
+    openai_input_cost_per_1m: float | None = None
+    openai_output_cost_per_1m: float | None = None
 
 
 @dataclass(slots=True)
@@ -66,6 +71,10 @@ class AnalysisResult:
     fit_reason: str
     risks: str
     generated_reply: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float | None = None
 
 
 @dataclass(slots=True)
@@ -78,6 +87,7 @@ class RunStats:
     new_vacancies: int = 0
     analyzed_vacancies: int = 0
     appended_vacancies: int = 0
+    seen_vacancies: int = 0
 
 
 class OpenAIQuotaError(RuntimeError):

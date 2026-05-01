@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import gspread
+from gspread.exceptions import WorksheetNotFound
 from google.oauth2.service_account import Credentials
 
 from .models import AnalysisResult, Config, RadarSettings, Vacancy
@@ -14,6 +17,28 @@ from .urls import normalize_url
 
 
 SHEET_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SEEN_WORKSHEET_TITLE = "Seen"
+SEEN_SHEET_HEADERS = [
+    "Analyzed Date",
+    "Source",
+    "Title",
+    "Company",
+    "URL",
+    "Score",
+    "Decision",
+    "Fit Reason",
+    "Risks",
+]
+
+
+@dataclass(slots=True)
+class OpenedSheets:
+    worksheet: gspread.Worksheet
+    headers: list[str]
+    existing_urls: set[str]
+    seen_worksheet: gspread.Worksheet
+    seen_headers: list[str]
+    seen_urls: set[str]
 
 
 def parse_service_account_info(raw_json: str) -> dict[str, Any]:
@@ -68,13 +93,29 @@ def column_letter(column_number: int) -> str:
     return letters
 
 
-def load_existing_urls(worksheet: gspread.Worksheet, headers: list[str]) -> set[str]:
+def load_urls_from_headers(worksheet: gspread.Worksheet, headers: list[str]) -> set[str]:
     if "URL" not in headers:
-        raise RuntimeError("Google Sheet must include a URL column.")
+        raise RuntimeError(f"Google Sheet worksheet {worksheet.title!r} must include a URL column.")
 
     url_column_index = headers.index("URL") + 1
     values = worksheet.col_values(url_column_index)
     return {normalize_url(value) for value in values[1:] if normalize_url(value)}
+
+
+def load_existing_urls(worksheet: gspread.Worksheet, headers: list[str]) -> set[str]:
+    return load_urls_from_headers(worksheet, headers)
+
+
+def get_or_create_seen_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Worksheet:
+    try:
+        return spreadsheet.worksheet(SEEN_WORKSHEET_TITLE)
+    except WorksheetNotFound:
+        logging.info("[sheet] Creating worksheet %r for analyzed URL tracking.", SEEN_WORKSHEET_TITLE)
+        return spreadsheet.add_worksheet(
+            title=SEEN_WORKSHEET_TITLE,
+            rows=1000,
+            cols=len(SEEN_SHEET_HEADERS),
+        )
 
 
 def google_sheet_access_help(config: Config) -> str:
@@ -96,15 +137,27 @@ def google_sheet_access_help(config: Config) -> str:
     )
 
 
-def open_sheet(config: Config) -> tuple[gspread.Worksheet, list[str], set[str]]:
+def open_sheet(config: Config) -> OpenedSheets:
     client = build_gspread_client(config.google_service_account_json)
     try:
-        worksheet = client.open_by_key(config.google_sheet_id).sheet1
+        spreadsheet = client.open_by_key(config.google_sheet_id)
     except PermissionError as exc:
         raise RuntimeError(google_sheet_access_help(config)) from exc
+
+    worksheet = spreadsheet.sheet1
     headers = ensure_sheet_headers(worksheet, config.radar.sheet_headers)
     existing_urls = load_existing_urls(worksheet, headers)
-    return worksheet, headers, existing_urls
+    seen_worksheet = get_or_create_seen_worksheet(spreadsheet)
+    seen_headers = ensure_sheet_headers(seen_worksheet, SEEN_SHEET_HEADERS)
+    seen_urls = load_urls_from_headers(seen_worksheet, seen_headers)
+    return OpenedSheets(
+        worksheet=worksheet,
+        headers=headers,
+        existing_urls=existing_urls,
+        seen_worksheet=seen_worksheet,
+        seen_headers=seen_headers,
+        seen_urls=seen_urls,
+    )
 
 
 def row_for_vacancy(
@@ -181,6 +234,59 @@ def append_analyzed_vacancies(
     rows = [
         row_for_vacancy(vacancy, analysis, headers, found_date, radar, row_defaults)
         for vacancy, analysis in analyzed
+    ]
+    worksheet.append_rows(rows, value_input_option="RAW")
+    return len(rows)
+
+
+def seen_decision(analysis: AnalysisResult, min_score: int) -> str:
+    if analysis.score <= 0:
+        return "Analysis failed"
+    if min_score > 0 and analysis.score < min_score:
+        return f"Below min score ({min_score})"
+    return "Appended"
+
+
+def seen_row_for_vacancy(
+    vacancy: Vacancy,
+    analysis: AnalysisResult,
+    headers: list[str],
+    analyzed_date: str,
+    min_score: int,
+) -> list[Any]:
+    values_by_header: dict[str, Any] = {
+        "Analyzed Date": analyzed_date,
+        "Source": vacancy.source,
+        "Title": vacancy.title,
+        "Company": vacancy.company,
+        "URL": vacancy.url,
+        "Score": analysis.score,
+        "Decision": seen_decision(analysis, min_score),
+        "Fit Reason": analysis.fit_reason,
+        "Risks": analysis.risks,
+    }
+    return [values_by_header.get(header, "") for header in headers]
+
+
+def append_seen_vacancies(
+    worksheet: gspread.Worksheet,
+    headers: list[str],
+    analyzed: list[tuple[Vacancy, AnalysisResult]],
+    radar: RadarSettings,
+    min_score: int,
+) -> int:
+    successful_analysis = [
+        (vacancy, analysis)
+        for vacancy, analysis in analyzed
+        if analysis.score > 0
+    ]
+    if not successful_analysis:
+        return 0
+
+    analyzed_date = format_found_date(radar)
+    rows = [
+        seen_row_for_vacancy(vacancy, analysis, headers, analyzed_date, min_score)
+        for vacancy, analysis in successful_analysis
     ]
     worksheet.append_rows(rows, value_input_option="RAW")
     return len(rows)
