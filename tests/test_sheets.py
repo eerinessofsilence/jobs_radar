@@ -2,12 +2,14 @@ import unittest
 from typing import cast
 
 import gspread
-from radar.models import AnalysisResult, RadarSettings, Vacancy
+from radar.models import AnalysisResult, Config, RadarSettings, RunStats, Vacancy
 from radar.sheets import (
+    RUNS_SHEET_HEADERS,
     SEEN_SHEET_HEADERS,
     append_seen_vacancies,
     ensure_sheet_headers,
     load_urls_from_headers,
+    run_summary_row,
     seen_row_for_vacancy,
 )
 
@@ -78,6 +80,44 @@ def make_vacancy() -> Vacancy:
     )
 
 
+def make_config(radar: RadarSettings) -> Config:
+    return Config(
+        openai_api_key="openai-key",
+        google_sheet_id="sheet-id",
+        google_service_account_json="{}",
+        telegram_bot_token="telegram-token",
+        telegram_chat_id="chat-id",
+        radar=radar,
+        dou_rss_urls=[],
+        djinni_rss_urls=[],
+        min_score=5,
+        max_jobs_per_run=10,
+        openai_model="test-model",
+    )
+
+
+def make_run_stats() -> RunStats:
+    return RunStats(
+        total_fetched=10,
+        matched_by_keywords=8,
+        skipped_by_title_prefilter=1,
+        skipped_by_experience_prefilter=1,
+        skipped_by_negative_prefilter=1,
+        skipped_existing_vacancies=2,
+        skipped_by_run_limit=1,
+        skipped_low_score=3,
+        new_vacancies=5,
+        queued_for_analysis=4,
+        analyzed_vacancies=4,
+        appended_vacancies=1,
+        seen_vacancies=4,
+        prompt_tokens=100,
+        completion_tokens=50,
+        total_tokens=150,
+        estimated_cost_usd=0.0003,
+    )
+
+
 class SheetsTest(unittest.TestCase):
     def test_ensure_sheet_headers_adds_missing_headers(self) -> None:
         worksheet = FakeWorksheet([["URL"]])
@@ -144,6 +184,34 @@ class SheetsTest(unittest.TestCase):
         self.assertEqual(1, count)
         self.assertEqual(1, len(worksheet.appended_rows))
         self.assertEqual("Below min score (5)", worksheet.appended_rows[0][6])
+
+    def test_run_summary_row_records_observability_fields(self) -> None:
+        radar = make_radar()
+        config = make_config(radar)
+        stats = make_run_stats()
+
+        row = run_summary_row(
+            stats,
+            RUNS_SHEET_HEADERS,
+            "2026-04-30 12:00",
+            config,
+            error="OpenAI warning",
+        )
+
+        values_by_header = dict(zip(RUNS_SHEET_HEADERS, row, strict=True))
+        self.assertEqual("2026-04-30 12:00", values_by_header["Run Date"])
+        self.assertEqual("test-model", values_by_header["Model"])
+        self.assertEqual(
+            "https://docs.google.com/spreadsheets/d/sheet-id/edit",
+            values_by_header["Sheet URL"],
+        )
+        self.assertEqual(10, values_by_header["Total Fetched"])
+        self.assertEqual(2, values_by_header["Tracked/Seen/Duplicate"])
+        self.assertEqual(1, values_by_header["Skipped By Run Limit"])
+        self.assertEqual(3, values_by_header["Low Score Skipped"])
+        self.assertEqual(150, values_by_header["Total Tokens"])
+        self.assertEqual(0.0003, values_by_header["Estimated Cost USD"])
+        self.assertEqual("OpenAI warning", values_by_header["Errors"])
 
 
 if __name__ == "__main__":

@@ -13,11 +13,18 @@ from .filters import (
     title_prefilter_reason,
 )
 from .logging_utils import log_run_start, setup_logging
-from .models import AnalysisResult, OpenAIQuotaError, RunStats, Vacancy
+from .models import AnalysisResult, Config, OpenAIQuotaError, RunStats, Vacancy
 from .openai_analysis import analyze_vacancy
 from .rss import collect_email_alert_vacancies, collect_rss_vacancies
 from .settings import load_config
-from .sheets import append_analyzed_vacancies, append_seen_vacancies, open_sheet
+from .sheets import (
+    OpenedSheets,
+    append_analyzed_vacancies,
+    append_run_summary,
+    append_seen_vacancies,
+    google_sheet_url,
+    open_sheet,
+)
 from .telegram import build_no_new_message, build_summary_message, send_telegram_message
 from .text import keywords_label, truncate_text, vacancy_label
 
@@ -92,6 +99,41 @@ def log_openai_usage(vacancy: Vacancy, analysis: AnalysisResult) -> None:
     )
 
 
+def update_openai_usage_stats(
+    stats: RunStats,
+    analyzed: list[tuple[Vacancy, AnalysisResult]],
+) -> None:
+    estimated_costs = [
+        analysis.estimated_cost_usd
+        for _, analysis in analyzed
+        if analysis.estimated_cost_usd is not None
+    ]
+    stats.prompt_tokens = sum(analysis.prompt_tokens for _, analysis in analyzed)
+    stats.completion_tokens = sum(analysis.completion_tokens for _, analysis in analyzed)
+    stats.total_tokens = sum(analysis.total_tokens for _, analysis in analyzed)
+    stats.estimated_cost_usd = sum(estimated_costs) if estimated_costs else None
+
+
+def record_run_summary(
+    sheets: OpenedSheets,
+    stats: RunStats,
+    config: Config,
+    warning: str,
+) -> str:
+    try:
+        append_run_summary(
+            sheets.runs_worksheet,
+            sheets.runs_headers,
+            stats,
+            config,
+            error=warning,
+        )
+    except Exception as exc:
+        logging.exception("[sheet] Failed to append run summary.")
+        warning = combine_warning(warning, f"Runs tracking failed: {exc}")
+    return warning
+
+
 def run() -> None:
     setup_logging()
     config = load_config()
@@ -154,7 +196,7 @@ def run() -> None:
         unique_new_vacancies(prefiltered_vacancies, tracked_urls)
     )
     stats.new_vacancies = len(new_vacancies)
-    skipped_existing = len(prefiltered_vacancies) - stats.new_vacancies
+    stats.skipped_existing_vacancies = len(prefiltered_vacancies) - stats.new_vacancies
 
     logging.info(
         "[filter] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | "
@@ -165,16 +207,19 @@ def run() -> None:
         stats.skipped_by_experience_prefilter,
         stats.skipped_by_negative_prefilter,
         stats.new_vacancies,
-        skipped_existing,
+        stats.skipped_existing_vacancies,
     )
 
     if not new_vacancies:
-        message = build_no_new_message(stats)
+        warning = record_run_summary(sheets, stats, config, "")
+        message = build_no_new_message(stats, google_sheet_url(config), warning=warning)
         send_telegram_message(config.telegram_bot_token, config.telegram_chat_id, message)
         logging.info("[done] no new matching vacancies | telegram=sent")
         return
 
     vacancies_to_analyze = new_vacancies[: config.max_jobs_per_run]
+    stats.queued_for_analysis = len(vacancies_to_analyze)
+    stats.skipped_by_run_limit = len(new_vacancies) - len(vacancies_to_analyze)
     if len(new_vacancies) > len(vacancies_to_analyze):
         logging.info(
             "[analyze] %s/%s new vacancies queued",
@@ -228,12 +273,13 @@ def run() -> None:
         analyzed.append((vacancy, analysis))
 
     stats.analyzed_vacancies = len(analyzed)
+    update_openai_usage_stats(stats, analyzed)
     analyzed_to_append = filter_by_min_score(analyzed, config.min_score)
-    skipped_low_score = len(analyzed) - len(analyzed_to_append)
+    stats.skipped_low_score = len(analyzed) - len(analyzed_to_append)
     logging.info(
         "[sheet] append=%s | skip_low_score=%s | min=%s",
         len(analyzed_to_append),
-        skipped_low_score,
+        stats.skipped_low_score,
         config.min_score,
     )
     stats.appended_vacancies = append_analyzed_vacancies(
@@ -255,7 +301,15 @@ def run() -> None:
         logging.exception("[sheet] Failed to mark analyzed vacancies in Seen worksheet.")
         warning = combine_warning(warning, f"Seen tracking failed: {exc}")
 
-    message = build_summary_message(stats, analyzed, config.min_score, warning=warning)
+    warning = record_run_summary(sheets, stats, config, warning)
+
+    message = build_summary_message(
+        stats,
+        analyzed,
+        config.min_score,
+        google_sheet_url(config),
+        warning=warning,
+    )
     send_telegram_message(config.telegram_bot_token, config.telegram_chat_id, message)
     logging.info(
         "[done] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | "

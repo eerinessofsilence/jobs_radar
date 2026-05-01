@@ -84,10 +84,18 @@ class RunStats:
     skipped_by_title_prefilter: int = 0
     skipped_by_experience_prefilter: int = 0
     skipped_by_negative_prefilter: int = 0
+    skipped_existing_vacancies: int = 0
+    skipped_by_run_limit: int = 0
+    skipped_low_score: int = 0
     new_vacancies: int = 0
+    queued_for_analysis: int = 0
     analyzed_vacancies: int = 0
     appended_vacancies: int = 0
     seen_vacancies: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float | None = None
 
 
 class OpenAIQuotaError(RuntimeError):

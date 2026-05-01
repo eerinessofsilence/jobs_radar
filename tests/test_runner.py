@@ -86,6 +86,8 @@ class RunnerOrchestrationTest(unittest.TestCase):
             seen_worksheet=object(),
             seen_headers=["URL", "Score"],
             seen_urls={"https://example.com/seen"},
+            runs_worksheet=object(),
+            runs_headers=["Run Date", "Total Fetched"],
         )
 
         with (
@@ -102,6 +104,7 @@ class RunnerOrchestrationTest(unittest.TestCase):
             patch.object(runner, "analyze_vacancy", return_value=low_score_analysis) as analyze,
             patch.object(runner, "append_analyzed_vacancies", return_value=0) as append_main,
             patch.object(runner, "append_seen_vacancies", return_value=1) as append_seen,
+            patch.object(runner, "append_run_summary", return_value=1) as append_run,
             patch.object(runner, "send_telegram_message") as send_message,
         ):
             runner.run()
@@ -115,6 +118,10 @@ class RunnerOrchestrationTest(unittest.TestCase):
 
         seen_rows = append_seen.call_args.args[2]
         self.assertEqual([(new_vacancy, low_score_analysis)], seen_rows)
+        run_stats = append_run.call_args.args[2]
+        self.assertEqual(1, run_stats.skipped_existing_vacancies)
+        self.assertEqual(1, run_stats.skipped_low_score)
+        self.assertEqual(150, run_stats.total_tokens)
         send_message.assert_called_once()
 
 

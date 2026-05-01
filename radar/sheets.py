@@ -13,11 +13,12 @@ from google.oauth2.service_account import Credentials
 from gspread.exceptions import WorksheetNotFound
 from gspread.utils import ValueInputOption
 
-from .models import AnalysisResult, Config, RadarSettings, Vacancy
+from .models import AnalysisResult, Config, RadarSettings, RunStats, Vacancy
 from .urls import normalize_url
 
 SHEET_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SEEN_WORKSHEET_TITLE = "Seen"
+RUNS_WORKSHEET_TITLE = "Runs"
 SEEN_SHEET_HEADERS = [
     "Analyzed Date",
     "Source",
@@ -29,6 +30,29 @@ SEEN_SHEET_HEADERS = [
     "Fit Reason",
     "Risks",
 ]
+RUNS_SHEET_HEADERS = [
+    "Run Date",
+    "Model",
+    "Sheet URL",
+    "Total Fetched",
+    "Matched Keywords",
+    "Title Skipped",
+    "Experience Skipped",
+    "Negative Skipped",
+    "Tracked/Seen/Duplicate",
+    "New Vacancies",
+    "Queued For Analysis",
+    "Skipped By Run Limit",
+    "Analyzed",
+    "Appended",
+    "Low Score Skipped",
+    "Marked Seen",
+    "Prompt Tokens",
+    "Completion Tokens",
+    "Total Tokens",
+    "Estimated Cost USD",
+    "Errors",
+]
 
 
 @dataclass(slots=True)
@@ -39,6 +63,8 @@ class OpenedSheets:
     seen_worksheet: gspread.Worksheet
     seen_headers: list[str]
     seen_urls: set[str]
+    runs_worksheet: gspread.Worksheet
+    runs_headers: list[str]
 
 
 def parse_service_account_info(raw_json: str) -> dict[str, Any]:
@@ -107,17 +133,41 @@ def load_existing_urls(worksheet: gspread.Worksheet, headers: list[str]) -> set[
 
 
 def get_or_create_seen_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Worksheet:
+    return get_or_create_worksheet(
+        spreadsheet,
+        SEEN_WORKSHEET_TITLE,
+        len(SEEN_SHEET_HEADERS),
+        "analyzed URL tracking",
+    )
+
+
+def get_or_create_runs_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Worksheet:
+    return get_or_create_worksheet(
+        spreadsheet,
+        RUNS_WORKSHEET_TITLE,
+        len(RUNS_SHEET_HEADERS),
+        "run history",
+    )
+
+
+def get_or_create_worksheet(
+    spreadsheet: gspread.Spreadsheet,
+    title: str,
+    columns: int,
+    purpose: str,
+) -> gspread.Worksheet:
     try:
-        return spreadsheet.worksheet(SEEN_WORKSHEET_TITLE)
+        return spreadsheet.worksheet(title)
     except WorksheetNotFound:
         logging.info(
-            "[sheet] Creating worksheet %r for analyzed URL tracking.",
-            SEEN_WORKSHEET_TITLE,
+            "[sheet] Creating worksheet %r for %s.",
+            title,
+            purpose,
         )
         return spreadsheet.add_worksheet(
-            title=SEEN_WORKSHEET_TITLE,
+            title=title,
             rows=1000,
-            cols=len(SEEN_SHEET_HEADERS),
+            cols=columns,
         )
 
 
@@ -153,6 +203,8 @@ def open_sheet(config: Config) -> OpenedSheets:
     seen_worksheet = get_or_create_seen_worksheet(spreadsheet)
     seen_headers = ensure_sheet_headers(seen_worksheet, SEEN_SHEET_HEADERS)
     seen_urls = load_urls_from_headers(seen_worksheet, seen_headers)
+    runs_worksheet = get_or_create_runs_worksheet(spreadsheet)
+    runs_headers = ensure_sheet_headers(runs_worksheet, RUNS_SHEET_HEADERS)
     return OpenedSheets(
         worksheet=worksheet,
         headers=headers,
@@ -160,6 +212,8 @@ def open_sheet(config: Config) -> OpenedSheets:
         seen_worksheet=seen_worksheet,
         seen_headers=seen_headers,
         seen_urls=seen_urls,
+        runs_worksheet=runs_worksheet,
+        runs_headers=runs_headers,
     )
 
 
@@ -291,3 +345,60 @@ def append_seen_vacancies(
     ]
     worksheet.append_rows(rows, value_input_option=ValueInputOption.raw)
     return len(rows)
+
+
+def google_sheet_url(config: Config) -> str:
+    return f"https://docs.google.com/spreadsheets/d/{config.google_sheet_id}/edit"
+
+
+def run_summary_row(
+    stats: RunStats,
+    headers: list[str],
+    run_date: str,
+    config: Config,
+    error: str = "",
+) -> list[Any]:
+    values_by_header: dict[str, Any] = {
+        "Run Date": run_date,
+        "Model": config.openai_model,
+        "Sheet URL": google_sheet_url(config),
+        "Total Fetched": stats.total_fetched,
+        "Matched Keywords": stats.matched_by_keywords,
+        "Title Skipped": stats.skipped_by_title_prefilter,
+        "Experience Skipped": stats.skipped_by_experience_prefilter,
+        "Negative Skipped": stats.skipped_by_negative_prefilter,
+        "Tracked/Seen/Duplicate": stats.skipped_existing_vacancies,
+        "New Vacancies": stats.new_vacancies,
+        "Queued For Analysis": stats.queued_for_analysis,
+        "Skipped By Run Limit": stats.skipped_by_run_limit,
+        "Analyzed": stats.analyzed_vacancies,
+        "Appended": stats.appended_vacancies,
+        "Low Score Skipped": stats.skipped_low_score,
+        "Marked Seen": stats.seen_vacancies,
+        "Prompt Tokens": stats.prompt_tokens,
+        "Completion Tokens": stats.completion_tokens,
+        "Total Tokens": stats.total_tokens,
+        "Estimated Cost USD": (
+            round(stats.estimated_cost_usd, 6) if stats.estimated_cost_usd is not None else ""
+        ),
+        "Errors": error,
+    }
+    return [values_by_header.get(header, "") for header in headers]
+
+
+def append_run_summary(
+    worksheet: gspread.Worksheet,
+    headers: list[str],
+    stats: RunStats,
+    config: Config,
+    error: str = "",
+) -> int:
+    row = run_summary_row(
+        stats,
+        headers,
+        format_found_date(config.radar),
+        config,
+        error=error,
+    )
+    worksheet.append_rows([row], value_input_option=ValueInputOption.raw)
+    return 1

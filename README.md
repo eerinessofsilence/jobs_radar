@@ -33,6 +33,8 @@ The canonical header list lives in `job_radar_settings.json` under `sheet_header
 
 The script also creates/uses a `Seen` worksheet tab automatically. It stores every URL that was successfully analyzed by OpenAI, including vacancies skipped because their score is below `MIN_SCORE`. This prevents the same low-score vacancy from being analyzed and paid for again on the next run. Technical failures with score `0` are not marked seen, so they can be retried later.
 
+The script also creates/uses a `Runs` worksheet tab automatically. Each radar run appends one row with model, fetched/matched/analyzed/appended counts, filter skips, tracked/seen duplicates, run-limit skips, low-score skips, token usage, estimated cost if configured, sheet URL, and any warnings/errors.
+
 Recommended `Status` values:
 
 ```text
@@ -124,10 +126,11 @@ By default it resets the first worksheet. To target a specific worksheet tab, se
 python reset_sheet.py --yes --worksheet Sheet1
 ```
 
-The reset command does not clear the `Seen` worksheet unless you explicitly target it:
+The reset command does not clear auxiliary worksheets unless you explicitly target them:
 
 ```bash
 python reset_sheet.py --yes --worksheet Seen
+python reset_sheet.py --yes --worksheet Runs
 ```
 
 ## Radar Config
@@ -285,7 +288,8 @@ This avoids browser automation and avoids scraping protected/private pages.
 12. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
 13. Appends analyzed vacancies whose score is at least `MIN_SCORE`.
 14. Marks successfully analyzed vacancies in the `Seen` worksheet to avoid re-analyzing low-score repeats.
-15. Sends a Telegram summary with counts and the top 5 vacancies by score.
+15. Appends one run-history row to the `Runs` worksheet with counts, skips, token usage, and warnings.
+16. Sends a Telegram summary with the same operational context, a Google Sheet link, and the top 5 vacancies by score.
 
 ## Scoring
 

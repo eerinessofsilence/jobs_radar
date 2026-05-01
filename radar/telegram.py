@@ -35,22 +35,51 @@ def send_telegram_message(bot_token: str, chat_id: str, message: str) -> None:
             response.raise_for_status()
 
 
-def build_no_new_message(stats: RunStats) -> str:
+def token_usage_line(stats: RunStats) -> str:
+    cost = f", cost=${stats.estimated_cost_usd:.6f}" if stats.estimated_cost_usd is not None else ""
     return (
-        "Job radar: no new matching vacancies found.\n"
-        f"Total fetched: {stats.total_fetched}\n"
-        f"Matched by keywords: {stats.matched_by_keywords}\n"
-        f"Skipped by title prefilter: {stats.skipped_by_title_prefilter}\n"
-        f"Skipped by experience prefilter: {stats.skipped_by_experience_prefilter}\n"
-        f"Skipped by negative prefilter: {stats.skipped_by_negative_prefilter}\n"
-        f"New vacancies: {stats.new_vacancies}"
+        f"Token usage: {stats.total_tokens} total "
+        f"({stats.prompt_tokens} input, {stats.completion_tokens} output){cost}"
     )
+
+
+def build_context_lines(stats: RunStats) -> list[str]:
+    return [
+        f"Total fetched: {stats.total_fetched}",
+        f"Matched by keywords: {stats.matched_by_keywords}",
+        f"Skipped by title prefilter: {stats.skipped_by_title_prefilter}",
+        f"Skipped by experience prefilter: {stats.skipped_by_experience_prefilter}",
+        f"Skipped by negative prefilter: {stats.skipped_by_negative_prefilter}",
+        f"Tracked/seen/duplicate: {stats.skipped_existing_vacancies}",
+        f"New vacancies: {stats.new_vacancies}",
+        f"Queued for analysis: {stats.queued_for_analysis}",
+        f"Skipped by run limit: {stats.skipped_by_run_limit}",
+        f"Analyzed vacancies: {stats.analyzed_vacancies}",
+        f"Appended vacancies: {stats.appended_vacancies}",
+        f"Low-score skipped: {stats.skipped_low_score}",
+        f"Marked seen: {stats.seen_vacancies}",
+        token_usage_line(stats),
+    ]
+
+
+def build_no_new_message(stats: RunStats, sheet_url: str = "", warning: str = "") -> str:
+    lines = [
+        "Job radar: no new matching vacancies found.",
+        *build_context_lines(stats),
+    ]
+    if sheet_url:
+        lines.append(f"Sheet: {sheet_url}")
+    if warning:
+        lines.append("")
+        lines.append(f"Warning: {warning}")
+    return "\n".join(lines)
 
 
 def build_summary_message(
     stats: RunStats,
     analyzed: list[tuple[Vacancy, AnalysisResult]],
     min_score: int,
+    sheet_url: str = "",
     warning: str = "",
 ) -> str:
     eligible_top = [
@@ -58,21 +87,12 @@ def build_summary_message(
     ]
     top_vacancies = sorted(eligible_top, key=lambda item: item[1].score, reverse=True)[:5]
 
-    lines = [
-        "Job radar summary",
-        f"Total fetched: {stats.total_fetched}",
-        f"Matched by keywords: {stats.matched_by_keywords}",
-        f"Skipped by title prefilter: {stats.skipped_by_title_prefilter}",
-        f"Skipped by experience prefilter: {stats.skipped_by_experience_prefilter}",
-        f"Skipped by negative prefilter: {stats.skipped_by_negative_prefilter}",
-        f"New vacancies: {stats.new_vacancies}",
-        f"Analyzed vacancies: {stats.analyzed_vacancies}",
-        f"Appended vacancies: {stats.appended_vacancies}",
-        f"Marked seen: {stats.seen_vacancies}",
-    ]
+    lines = ["Job radar summary", *build_context_lines(stats)]
 
     if min_score > 0:
         lines.append(f"Minimum score to append/list: {min_score}")
+    if sheet_url:
+        lines.append(f"Sheet: {sheet_url}")
 
     if warning:
         lines.append("")
