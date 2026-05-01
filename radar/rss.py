@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC
 from email.utils import parsedate_to_datetime
 from typing import Any
 
@@ -35,7 +35,9 @@ def first_entry_value(entry: Any, keys: list[str]) -> str:
 
 def entry_description(entry: Any) -> str:
     if entry.get("content"):
-        content_values = [item.get("value", "") for item in entry.get("content", []) if item.get("value")]
+        content_values = [
+            item.get("value", "") for item in entry.get("content", []) if item.get("value")
+        ]
         if content_values:
             return clean_html("\n".join(content_values))
 
@@ -50,8 +52,8 @@ def parse_published_date(entry: Any) -> str:
     try:
         parsed = parsedate_to_datetime(raw_date)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc).isoformat(timespec="seconds")
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).isoformat(timespec="seconds")
     except (TypeError, ValueError, IndexError, OverflowError):
         return str(raw_date)
 
@@ -269,7 +271,11 @@ def fetch_rss_vacancies(source: str, urls: list[str]) -> list[Vacancy]:
 
             parsed_feed = feedparser.parse(response.content)
             if parsed_feed.bozo:
-                logging.warning("[fetch] %s RSS parse warning: %s", source, parsed_feed.bozo_exception)
+                logging.warning(
+                    "[fetch] %s RSS parse warning: %s",
+                    source,
+                    parsed_feed.bozo_exception,
+                )
 
             parsed_count = 0
             for entry in parsed_feed.entries:

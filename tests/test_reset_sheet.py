@@ -25,7 +25,10 @@ class ResetSheetTest(unittest.TestCase):
             ["29.04.2026", "Djinni"],
         ]
 
-        self.assertEqual("A2:D2", data_rows_clear_range(values, ["Found Date", "Source", "URL", "Status"]))
+        self.assertEqual(
+            "A2:D2",
+            data_rows_clear_range(values, ["Found Date", "Source", "URL", "Status"]),
+        )
 
 
 if __name__ == "__main__":

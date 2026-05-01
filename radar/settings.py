@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 
 from .models import Config, RadarSettings
 
-
 DEFAULT_CONFIG_PATH = "job_radar_config.json"
 DEFAULT_PROFILE_CONFIG_PATH = "job_radar_profile.json"
 DEFAULT_SETTINGS_CONFIG_PATH = "job_radar_settings.json"
@@ -31,7 +30,7 @@ def split_env_urls(value: str | None, defaults: list[str]) -> list[str]:
 
 def env_int(name: str, default: int, minimum: int | None = None) -> int:
     raw_value = os.getenv(name)
-    if raw_value in (None, ""):
+    if raw_value is None or raw_value == "":
         return default
 
     try:
@@ -47,9 +46,13 @@ def env_int(name: str, default: int, minimum: int | None = None) -> int:
     return value
 
 
-def env_float(name: str, default: float | None = None, minimum: float | None = None) -> float | None:
+def env_float(
+    name: str,
+    default: float | None = None,
+    minimum: float | None = None,
+) -> float | None:
     raw_value = os.getenv(name)
-    if raw_value in (None, ""):
+    if raw_value is None or raw_value == "":
         return default
 
     try:
@@ -165,7 +168,10 @@ def optional_config_bool(data: dict[str, Any], key: str, default: bool = False) 
     return value
 
 
-def merge_config_data(profile_data: dict[str, Any], settings_data: dict[str, Any]) -> dict[str, Any]:
+def merge_config_data(
+    profile_data: dict[str, Any],
+    settings_data: dict[str, Any],
+) -> dict[str, Any]:
     merged = dict(settings_data)
     merged.update(profile_data)
     return merged
@@ -193,8 +199,7 @@ def load_config_data() -> dict[str, Any]:
 
     if profile_path.exists() != settings_path.exists():
         raise RuntimeError(
-            "Both split config files must exist: "
-            f"{profile_path.name} and {settings_path.name}."
+            f"Both split config files must exist: {profile_path.name} and {settings_path.name}."
         )
 
     return load_json_file(resolve_config_path(legacy_config_value or DEFAULT_CONFIG_PATH))

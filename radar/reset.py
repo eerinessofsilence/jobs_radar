@@ -20,7 +20,11 @@ def data_rows_clear_range(values: list[list[str]], configured_headers: list[str]
     return f"A2:{column_letter(max_columns)}{len(values)}"
 
 
-def open_reset_worksheet(client: gspread.Client, sheet_id: str, worksheet_title: str) -> gspread.Worksheet:
+def open_reset_worksheet(
+    client: gspread.Client,
+    sheet_id: str,
+    worksheet_title: str,
+) -> gspread.Worksheet:
     spreadsheet = client.open_by_key(sheet_id)
     if worksheet_title:
         return spreadsheet.worksheet(worksheet_title)

@@ -15,7 +15,10 @@ def minimal_profile() -> dict:
         "required_title_keywords": ["Developer"],
         "keywords": ["Python"],
         "negative_prefilter": {"enabled": True, "title_keywords": [], "description_phrases": []},
-        "default_rss_urls": {"dou": ["https://example.com/dou"], "djinni": ["https://example.com/djinni"]},
+        "default_rss_urls": {
+            "dou": ["https://example.com/dou"],
+            "djinni": ["https://example.com/djinni"],
+        },
     }
 
 
@@ -39,7 +42,10 @@ def minimal_settings() -> dict:
 
 class SettingsTest(unittest.TestCase):
     def test_resolve_config_path_uses_project_root(self) -> None:
-        self.assertEqual(Path.cwd() / "job_radar_profile.json", resolve_config_path("job_radar_profile.json"))
+        self.assertEqual(
+            Path.cwd() / "job_radar_profile.json",
+            resolve_config_path("job_radar_profile.json"),
+        )
 
     def test_loads_split_config_data(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

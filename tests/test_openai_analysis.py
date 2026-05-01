@@ -22,8 +22,12 @@ class OpenAIAnalysisTest(unittest.TestCase):
         self.assertEqual('{"score": 7}', strip_markdown_fences(content))
 
     def test_parse_openai_json_handles_markdown_fenced_json(self) -> None:
+        content = (
+            '```json\n{"score": 7, "fit_reason": "Good fit", '
+            '"risks": "", "generated_reply": "Hi"}\n```'
+        )
         result = parse_openai_json(
-            '```json\n{"score": 7, "fit_reason": "Good fit", "risks": "", "generated_reply": "Hi"}\n```',
+            content,
             score_min=1,
             score_max=10,
         )
@@ -43,14 +47,17 @@ class OpenAIAnalysisTest(unittest.TestCase):
         self.assertEqual("Strong", result.fit_reason)
 
     def test_estimate_openai_cost_uses_per_million_prices(self) -> None:
+        cost = estimate_openai_cost_usd(
+            prompt_tokens=1000,
+            completion_tokens=250,
+            input_cost_per_1m=0.1,
+            output_cost_per_1m=0.8,
+        )
+
+        assert cost is not None
         self.assertAlmostEqual(
             0.0003,
-            estimate_openai_cost_usd(
-                prompt_tokens=1000,
-                completion_tokens=250,
-                input_cost_per_1m=0.1,
-                output_cost_per_1m=0.8,
-            ),
+            cost,
         )
 
     def test_attach_openai_usage_adds_tokens_and_cost(self) -> None:

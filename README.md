@@ -12,7 +12,10 @@ The script does not auto-apply to jobs. It only generates draft replies.
 - `tests/` - unit tests
 - `job_radar_profile.json` - personal search profile, keywords, experience limits, negative filters, and RSS defaults
 - `job_radar_settings.json` - software settings such as headers, date formatting, scoring prompt, and row defaults
-- `requirements.txt` - Python dependencies
+- `pyproject.toml` - Ruff, mypy, project scripts, and local quality-check tasks
+- `requirements.in` - direct runtime dependencies
+- `requirements.txt` - pinned runtime dependency lock
+- `requirements-dev.in` / `requirements-dev.txt` - direct and pinned development dependencies
 - `.github/workflows/job-radar.yml` - GitHub Actions workflow
 - `.env.example` - local environment template
 
@@ -96,6 +99,13 @@ python job_radar.py
 ```
 
 Fill `.env` before running. For local use, put `GOOGLE_SERVICE_ACCOUNT_JSON` on one line or wrap it in quotes if your shell requires it.
+
+For development checks, install dev dependencies:
+
+```bash
+pip install -r requirements-dev.txt
+python -m poethepoet check
+```
 
 ## Reset Google Sheet
 
@@ -202,7 +212,13 @@ Multiple RSS URLs can be separated with commas, semicolons, or new lines.
 
 ## Tests
 
-Run unit tests locally with:
+Run the full local quality gate with:
+
+```bash
+python -m poethepoet check
+```
+
+Or run only unit tests with:
 
 ```bash
 python -m unittest discover -s tests

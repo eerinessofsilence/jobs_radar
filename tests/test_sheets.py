@@ -1,5 +1,7 @@
 import unittest
+from typing import cast
 
+import gspread
 from radar.models import AnalysisResult, RadarSettings, Vacancy
 from radar.sheets import (
     SEEN_SHEET_HEADERS,
@@ -30,7 +32,7 @@ class FakeWorksheet:
         self.updated_values = values
         self.updated_range = range_name
 
-    def append_rows(self, rows: list[list[str]], value_input_option: str) -> None:
+    def append_rows(self, rows: list[list[str]], value_input_option: object) -> None:
         self.appended_rows = rows
 
 
@@ -81,7 +83,7 @@ class SheetsTest(unittest.TestCase):
         worksheet = FakeWorksheet([["URL"]])
 
         with self.assertLogs(level="WARNING"):
-            headers = ensure_sheet_headers(worksheet, ["URL", "Score"])
+            headers = ensure_sheet_headers(cast(gspread.Worksheet, worksheet), ["URL", "Score"])
 
         self.assertEqual(["URL", "Score"], headers)
         self.assertEqual([["URL", "Score"]], worksheet.updated_values)
@@ -97,7 +99,7 @@ class SheetsTest(unittest.TestCase):
 
         self.assertEqual(
             {"https://example.com/job?id=1"},
-            load_urls_from_headers(worksheet, ["URL"]),
+            load_urls_from_headers(cast(gspread.Worksheet, worksheet), ["URL"]),
         )
 
     def test_seen_row_marks_below_min_score(self) -> None:
@@ -118,7 +120,7 @@ class SheetsTest(unittest.TestCase):
         worksheet = FakeWorksheet([SEEN_SHEET_HEADERS])
 
         count = append_seen_vacancies(
-            worksheet,
+            cast(gspread.Worksheet, worksheet),
             SEEN_SHEET_HEADERS,
             [
                 (

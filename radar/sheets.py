@@ -4,17 +4,17 @@ import base64
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import gspread
-from gspread.exceptions import WorksheetNotFound
 from google.oauth2.service_account import Credentials
+from gspread.exceptions import WorksheetNotFound
+from gspread.utils import ValueInputOption
 
 from .models import AnalysisResult, Config, RadarSettings, Vacancy
 from .urls import normalize_url
-
 
 SHEET_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SEEN_WORKSHEET_TITLE = "Seen"
@@ -99,7 +99,7 @@ def load_urls_from_headers(worksheet: gspread.Worksheet, headers: list[str]) -> 
 
     url_column_index = headers.index("URL") + 1
     values = worksheet.col_values(url_column_index)
-    return {normalize_url(value) for value in values[1:] if normalize_url(value)}
+    return {normalize_url(str(value)) for value in values[1:] if normalize_url(str(value))}
 
 
 def load_existing_urls(worksheet: gspread.Worksheet, headers: list[str]) -> set[str]:
@@ -110,7 +110,10 @@ def get_or_create_seen_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Wo
     try:
         return spreadsheet.worksheet(SEEN_WORKSHEET_TITLE)
     except WorksheetNotFound:
-        logging.info("[sheet] Creating worksheet %r for analyzed URL tracking.", SEEN_WORKSHEET_TITLE)
+        logging.info(
+            "[sheet] Creating worksheet %r for analyzed URL tracking.",
+            SEEN_WORKSHEET_TITLE,
+        )
         return spreadsheet.add_worksheet(
             title=SEEN_WORKSHEET_TITLE,
             rows=1000,
@@ -200,12 +203,12 @@ def sheet_timezone(radar: RadarSettings) -> ZoneInfo:
 
 def format_sheet_datetime(value: datetime, radar: RadarSettings) -> str:
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=UTC)
     return value.astimezone(sheet_timezone(radar)).strftime(radar.found_date_format)
 
 
 def format_found_date(radar: RadarSettings) -> str:
-    return format_sheet_datetime(datetime.now(timezone.utc), radar)
+    return format_sheet_datetime(datetime.now(UTC), radar)
 
 
 def format_published_date(published_date: str, radar: RadarSettings) -> str:
@@ -235,7 +238,7 @@ def append_analyzed_vacancies(
         row_for_vacancy(vacancy, analysis, headers, found_date, radar, row_defaults)
         for vacancy, analysis in analyzed
     ]
-    worksheet.append_rows(rows, value_input_option="RAW")
+    worksheet.append_rows(rows, value_input_option=ValueInputOption.raw)
     return len(rows)
 
 
@@ -276,9 +279,7 @@ def append_seen_vacancies(
     min_score: int,
 ) -> int:
     successful_analysis = [
-        (vacancy, analysis)
-        for vacancy, analysis in analyzed
-        if analysis.score > 0
+        (vacancy, analysis) for vacancy, analysis in analyzed if analysis.score > 0
     ]
     if not successful_analysis:
         return 0
@@ -288,5 +289,5 @@ def append_seen_vacancies(
         seen_row_for_vacancy(vacancy, analysis, headers, analyzed_date, min_score)
         for vacancy, analysis in successful_analysis
     ]
-    worksheet.append_rows(rows, value_input_option="RAW")
+    worksheet.append_rows(rows, value_input_option=ValueInputOption.raw)
     return len(rows)

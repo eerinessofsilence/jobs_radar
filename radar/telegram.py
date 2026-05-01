@@ -54,9 +54,7 @@ def build_summary_message(
     warning: str = "",
 ) -> str:
     eligible_top = [
-        (vacancy, analysis)
-        for vacancy, analysis in analyzed
-        if analysis.score >= min_score
+        (vacancy, analysis) for vacancy, analysis in analyzed if analysis.score >= min_score
     ]
     top_vacancies = sorted(eligible_top, key=lambda item: item[1].score, reverse=True)[:5]
 

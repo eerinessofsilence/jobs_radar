@@ -6,7 +6,6 @@ import sys
 
 from .models import Config
 
-
 LOG_FORMAT = "%(asctime)s | %(levelname)s | %(message)s"
 
 
@@ -66,7 +65,7 @@ class ColorFormatter(logging.Formatter):
 def color_log_tag(message: str) -> str:
     for tag, color in TAG_COLORS.items():
         if message.startswith(tag):
-            return f"{color}{tag}{ANSI_RESET}{message[len(tag):]}"
+            return f"{color}{tag}{ANSI_RESET}{message[len(tag) :]}"
     return message
 
 
@@ -74,7 +73,7 @@ def should_color_logs() -> bool:
     if "NO_COLOR" in os.environ:
         return False
 
-    mode = (os.getenv("LOG_COLOR", "auto").strip().lower() or "auto")
+    mode = os.getenv("LOG_COLOR", "auto").strip().lower() or "auto"
     if mode in {"1", "true", "yes", "on", "always"}:
         return True
     if mode in {"0", "false", "no", "off", "never"}:
@@ -84,11 +83,10 @@ def should_color_logs() -> bool:
 
 
 def setup_logging() -> None:
-    level_name = (os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO")
-    level = getattr(logging, level_name, None)
-    invalid_level_name = level_name if not isinstance(level, int) else ""
-    if invalid_level_name:
-        level = logging.INFO
+    level_name = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
+    configured_level = getattr(logging, level_name, None)
+    invalid_level_name = level_name if not isinstance(configured_level, int) else ""
+    level: int = configured_level if isinstance(configured_level, int) else logging.INFO
 
     handler = logging.StreamHandler()
     handler.setFormatter(ColorFormatter(LOG_FORMAT, "%Y-%m-%d %H:%M:%S", should_color_logs()))
@@ -113,7 +111,8 @@ def setup_logging() -> None:
 
 def log_run_start(config: Config) -> None:
     logging.info(
-        "[start] model=%s | score=%s-%s | min=%s | max_jobs=%s | feeds=%s | openai_timeout=%ss | openai_retries=%s | max_completion=%s",
+        "[start] model=%s | score=%s-%s | min=%s | max_jobs=%s | feeds=%s | "
+        "openai_timeout=%ss | openai_retries=%s | max_completion=%s",
         config.openai_model,
         config.radar.score_min,
         config.radar.score_max,

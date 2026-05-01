@@ -8,14 +8,17 @@ from openai import OpenAI, RateLimitError
 
 from .models import AnalysisResult, OpenAIQuotaError, RadarSettings, Vacancy
 
-
 DEFAULT_ANALYSIS_TIMEOUT_SECONDS = 60
 DEFAULT_MAX_COMPLETION_TOKENS = 700
 
 
 def strip_markdown_fences(content: str) -> str:
     content = content.strip()
-    fence_match = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", content, flags=re.DOTALL | re.IGNORECASE)
+    fence_match = re.fullmatch(
+        r"```(?:json)?\s*(.*?)\s*```",
+        content,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
     return fence_match.group(1).strip() if fence_match else content
 
 

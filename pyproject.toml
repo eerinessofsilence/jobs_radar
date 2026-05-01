@@ -1,0 +1,53 @@
+[project]
+name = "jobs-radar"
+version = "0.1.0"
+description = "Automated job radar for RSS job feeds, OpenAI analysis, Google Sheets, and Telegram."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "beautifulsoup4>=4.12.3",
+  "feedparser>=6.0.11",
+  "google-auth>=2.35.0",
+  "gspread>=6.1.4",
+  "openai>=1.55.0",
+  "python-dotenv>=1.0.1",
+  "requests>=2.32.3",
+]
+
+[project.scripts]
+job-radar = "radar.runner:run"
+job-radar-reset-sheet = "radar.reset:run"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["radar", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["radar", "tests", "job_radar.py", "reset_sheet.py"]
+check_untyped_defs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[tool.poe.tasks]
+test = "python -m unittest discover -s tests"
+lint = "ruff check ."
+format = "ruff format ."
+format-check = "ruff format --check ."
+typecheck = "mypy"
+
+[tool.poe.tasks.check]
+sequence = ["lint", "format-check", "typecheck", "test"]

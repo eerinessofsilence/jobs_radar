@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from openai import OpenAI
 
@@ -16,8 +16,8 @@ from .logging_utils import log_run_start, setup_logging
 from .models import AnalysisResult, OpenAIQuotaError, RunStats, Vacancy
 from .openai_analysis import analyze_vacancy
 from .rss import collect_email_alert_vacancies, collect_rss_vacancies
-from .sheets import append_analyzed_vacancies, append_seen_vacancies, open_sheet
 from .settings import load_config
+from .sheets import append_analyzed_vacancies, append_seen_vacancies, open_sheet
 from .telegram import build_no_new_message, build_summary_message, send_telegram_message
 from .text import keywords_label, truncate_text, vacancy_label
 
@@ -43,7 +43,7 @@ def vacancy_published_timestamp(vacancy: Vacancy) -> float:
         return 0.0
 
     if published_at.tzinfo is None:
-        published_at = published_at.replace(tzinfo=timezone.utc)
+        published_at = published_at.replace(tzinfo=UTC)
     return published_at.timestamp()
 
 
@@ -136,7 +136,11 @@ def run() -> None:
         experience_reason = experience_prefilter_reason(vacancy, config.radar)
         if experience_reason:
             stats.skipped_by_experience_prefilter += 1
-            logging.debug("[filter] experience skip=%s | %s", experience_reason, vacancy_label(vacancy))
+            logging.debug(
+                "[filter] experience skip=%s | %s",
+                experience_reason,
+                vacancy_label(vacancy),
+            )
             continue
 
         reason = negative_prefilter_reason(vacancy, config.radar)
@@ -153,7 +157,8 @@ def run() -> None:
     skipped_existing = len(prefiltered_vacancies) - stats.new_vacancies
 
     logging.info(
-        "[filter] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | neg_skip=%s | new=%s | tracked/seen/dup=%s",
+        "[filter] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | "
+        "neg_skip=%s | new=%s | tracked/seen/dup=%s",
         stats.total_fetched,
         stats.matched_by_keywords,
         stats.skipped_by_title_prefilter,
@@ -253,7 +258,8 @@ def run() -> None:
     message = build_summary_message(stats, analyzed, config.min_score, warning=warning)
     send_telegram_message(config.telegram_bot_token, config.telegram_chat_id, message)
     logging.info(
-        "[done] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | neg_skip=%s | new=%s | analyzed=%s | appended=%s | telegram=sent",
+        "[done] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | "
+        "neg_skip=%s | new=%s | analyzed=%s | appended=%s | telegram=sent",
         stats.total_fetched,
         stats.matched_by_keywords,
         stats.skipped_by_title_prefilter,

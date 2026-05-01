@@ -29,10 +29,10 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
-      - name: Run tests
-        run: python -m unittest discover -s tests
+      - name: Run quality checks
+        run: python -m poethepoet check
 
       - name: Run job radar
         run: python job_radar.py

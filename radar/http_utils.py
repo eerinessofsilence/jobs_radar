@@ -6,7 +6,6 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-
 RETRY_STATUS_CODES = (429, 500, 502, 503, 504)
 
 
