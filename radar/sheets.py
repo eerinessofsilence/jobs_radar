@@ -419,8 +419,7 @@ def load_analysis_cache(
     cache: dict[tuple[str, str], AnalysisResult] = {}
     for row in rows[1:]:
         values = {
-            header: row[index] if index < len(row) else ""
-            for index, header in enumerate(headers)
+            header: row[index] if index < len(row) else "" for index, header in enumerate(headers)
         }
         url = normalize_url(str(values.get("URL", "")))
         model = str(values.get("Model", "")).strip()
@@ -469,9 +468,7 @@ def analysis_cache_row(
         "Completion Tokens": analysis.completion_tokens,
         "Total Tokens": analysis.total_tokens,
         "Estimated Cost USD": (
-            round(analysis.estimated_cost_usd, 6)
-            if analysis.estimated_cost_usd is not None
-            else ""
+            round(analysis.estimated_cost_usd, 6) if analysis.estimated_cost_usd is not None else ""
         ),
         "Raw Response": analysis.raw_response,
     }

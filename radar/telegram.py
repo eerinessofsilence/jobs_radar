@@ -142,9 +142,7 @@ def build_summary_message(
         if min_score <= analysis.score < strong_min_score
     ][:5]
     skipped_notable = [
-        (vacancy, analysis)
-        for vacancy, analysis in sorted_scored
-        if analysis.score < min_score
+        (vacancy, analysis) for vacancy, analysis in sorted_scored if analysis.score < min_score
     ][:5]
 
     lines = ["Job radar summary", *build_context_lines(stats)]

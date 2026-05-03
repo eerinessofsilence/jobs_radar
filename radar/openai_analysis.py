@@ -190,9 +190,7 @@ def smart_description_excerpt(description: str, max_chars: int) -> str:
         return description
 
     paragraphs = [
-        paragraph.strip()
-        for paragraph in re.split(r"\n{2,}", description)
-        if paragraph.strip()
+        paragraph.strip() for paragraph in re.split(r"\n{2,}", description) if paragraph.strip()
     ]
     if not paragraphs:
         return description[:max_chars]
