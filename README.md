@@ -142,7 +142,7 @@ Edit `job_radar_profile.json` for personal search criteria:
 - `candidate_profile` - profile OpenAI uses to judge each vacancy.
 - `experience` - target seniority and years-of-experience limits.
 - `required_title_keywords` - developer-role title gate before OpenAI analysis.
-- `keywords` - title + description keyword filter before OpenAI analysis.
+- `keywords` - weighted title / stack / description keyword filter before OpenAI analysis.
 - `negative_prefilter` - conservative title/text filters that skip obvious non-fits before OpenAI.
 - `default_rss_urls` - default DOU and Djinni RSS URLs.
 
@@ -170,6 +170,8 @@ The experience prefilter rejects clear requirements above `max_required_years`, 
 Use `negative_prefilter` to save OpenAI calls on obvious non-fits. `title_keywords` are checked against the vacancy title. `description_phrases` are checked against title + description, so keep them conservative to avoid false skips.
 
 Use `required_title_keywords` to keep the radar focused on developer roles. A vacancy still needs to match the general `keywords`, but its title must also look like a backend, full-stack, frontend, Python, React, Node.js, API, or integration developer/engineer role.
+
+Keyword matches are weighted before OpenAI: title matches are strongest, stack/requirements matches are next, and description-only matches are weakest. A single generic description-only keyword is not enough to enter the analysis queue.
 
 By default, the script reads `job_radar_profile.json` and `job_radar_settings.json` from the project directory. To use different split config files, set:
 
@@ -278,7 +280,7 @@ This avoids browser automation and avoids scraping protected/private pages.
 
 1. Fetches DOU and Djinni RSS feeds.
 2. Parses RSS items into normalized vacancy records.
-3. Matches configured keywords against title and description.
+3. Matches configured keywords against title, stack/requirements sections, and description.
 4. Applies `required_title_keywords` to keep the queue focused on developer roles.
 5. Applies the hard experience prefilter before OpenAI.
 6. Applies `negative_prefilter` before OpenAI.
@@ -288,7 +290,7 @@ This avoids browser automation and avoids scraping protected/private pages.
 10. Interleaves new vacancies by source before applying `MAX_JOBS_PER_RUN`, so one source does not crowd out the other.
 11. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
 12. Reuses cached OpenAI analysis from `AnalysisCache` when the model and URL match.
-13. Locally pre-scores obvious non-fits before OpenAI.
+13. Locally pre-scores obvious non-fits before OpenAI, including office-only, relocation-only, senior 5+/7+, military/drone, gambling/trading, embedded, node-only, and non-target specialist roles.
 14. Sends a compacted vacancy description to OpenAI, prioritizing intro, requirements, responsibilities, stack, format, and salary sections.
 15. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric, timeout, retry count, and completion-token cap.
 16. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
@@ -307,7 +309,7 @@ The score is configured in `job_radar_settings.json` under `analysis`:
 - `scoring_guidance` - general scoring rules
 - `scoring_rubric` - concrete meaning of scores
 
-Keywords are only the first filter: a vacancy must match at least one keyword before OpenAI analyzes it. Then the experience prefilter and `negative_prefilter` skip obvious non-fits. The final score is not a keyword count. OpenAI evaluates the whole remaining vacancy using the rubric: title, responsibilities, tech stack, experience requirements, remote/freelance/part-time/project fit, company/context clarity, salary if present, and risks.
+Keywords are only the first filter: a vacancy must pass the weighted keyword matcher before OpenAI analyzes it. Then the experience prefilter, `negative_prefilter`, and local pre-score rules skip obvious non-fits. The final score is not a keyword count. OpenAI evaluates the whole remaining vacancy using the rubric: title, responsibilities, tech stack, experience requirements, remote/freelance/part-time/project fit, company/context clarity, salary if present, and risks.
 
 Normal analyzed vacancies should receive `1-10`. Score `0` is reserved by the script for technical failures such as invalid OpenAI JSON or API errors.
 

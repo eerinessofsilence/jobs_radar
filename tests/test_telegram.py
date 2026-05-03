@@ -76,8 +76,13 @@ class TelegramTest(unittest.TestCase):
                 AnalysisResult(score=9, fit_reason="", risks="", generated_reply=""),
             ),
             (
-                make_vacancy("Maybe Backend Developer", company="", salary=""),
-                AnalysisResult(score=6, fit_reason="", risks="", generated_reply=""),
+                make_vacancy(
+                    "Maybe Backend Developer",
+                    company="",
+                    salary="",
+                    description="Project-based freelance API work.",
+                ),
+                AnalysisResult(score=4, fit_reason="", risks="", generated_reply=""),
             ),
             (
                 make_vacancy("Office Python Developer", description="Office-only work"),
@@ -88,7 +93,7 @@ class TelegramTest(unittest.TestCase):
         message = build_summary_message(stats, analyzed, min_score=5)
 
         self.assertIn("Strong\n9 | Strong Python Developer | Alpha | $4000 | Remote", message)
-        self.assertIn("Maybe\n6 | Maybe Backend Developer | - | - | Remote", message)
+        self.assertIn("Maybe\n4 | Maybe Backend Developer | - | - | Freelance", message)
         self.assertIn(
             "Skipped notable\n3 | Office Python Developer | Acme | $1000 | Office",
             message,

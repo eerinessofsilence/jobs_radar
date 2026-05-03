@@ -85,6 +85,10 @@ def vacancy_work_format(vacancy: Vacancy) -> str:
     return vacancy.location or "-"
 
 
+def has_interesting_work_format(vacancy: Vacancy) -> bool:
+    return vacancy_work_format(vacancy) in {"Part-time", "Freelance"}
+
+
 def compact_vacancy_line(vacancy: Vacancy, analysis: AnalysisResult) -> str:
     title = truncate_text(vacancy.title, 72)
     company = vacancy.company or "-"
@@ -140,9 +144,12 @@ def build_summary_message(
         (vacancy, analysis)
         for vacancy, analysis in sorted_scored
         if min_score <= analysis.score < strong_min_score
+        or (analysis.score < min_score and has_interesting_work_format(vacancy))
     ][:5]
     skipped_notable = [
-        (vacancy, analysis) for vacancy, analysis in sorted_scored if analysis.score < min_score
+        (vacancy, analysis)
+        for vacancy, analysis in sorted_scored
+        if analysis.score < min_score and not has_interesting_work_format(vacancy)
     ][:5]
 
     lines = ["Job radar summary", *build_context_lines(stats)]

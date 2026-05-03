@@ -1,6 +1,10 @@
 import unittest
 
-from radar.filters import experience_prefilter_reason
+from radar.filters import (
+    experience_prefilter_reason,
+    keyword_summary_is_relevant,
+    match_keyword_summary,
+)
 from radar.models import RadarSettings, Vacancy
 
 
@@ -47,6 +51,28 @@ def make_vacancy(title: str, description: str) -> Vacancy:
 
 
 class ExperiencePrefilterTest(unittest.TestCase):
+    def test_keyword_summary_weights_title_stack_and_description_matches(self) -> None:
+        vacancy = make_vacancy(
+            "Python Developer",
+            "Nice company intro.\n\nTech stack: Django, PostgreSQL.\n\nWe mention Docker once.",
+        )
+
+        summary = match_keyword_summary(vacancy, ["Python", "Django", "PostgreSQL", "Docker"])
+
+        self.assertEqual(["Python"], summary.title_matches)
+        self.assertEqual(["Django", "PostgreSQL"], summary.stack_matches)
+        self.assertEqual(["Docker"], summary.description_matches)
+        self.assertEqual(8, summary.score)
+        self.assertTrue(keyword_summary_is_relevant(summary))
+
+    def test_keyword_summary_rejects_single_description_only_match(self) -> None:
+        vacancy = make_vacancy("Customer Success Manager", "Integrates with APIs.")
+
+        summary = match_keyword_summary(vacancy, ["APIs"])
+
+        self.assertEqual(["APIs"], summary.description_matches)
+        self.assertFalse(keyword_summary_is_relevant(summary))
+
     def test_rejects_plus_requirement_above_limit(self) -> None:
         vacancy = make_vacancy(
             "Python Developer",

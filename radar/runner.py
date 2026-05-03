@@ -9,7 +9,8 @@ from .feeds import collect_email_alert_vacancies, collect_rss_vacancies
 from .filters import (
     experience_prefilter_reason,
     filter_by_min_score,
-    match_keywords,
+    keyword_summary_is_relevant,
+    match_keyword_summary,
     negative_prefilter_reason,
     title_prefilter_reason,
 )
@@ -217,8 +218,9 @@ def run() -> None:
 
     matched_vacancies: list[Vacancy] = []
     for vacancy in fetched_vacancies:
-        vacancy.matched_keywords = match_keywords(vacancy, config.radar.keywords)
-        if vacancy.matched_keywords:
+        keyword_summary = match_keyword_summary(vacancy, config.radar.keywords)
+        vacancy.matched_keywords = keyword_summary.labels
+        if keyword_summary_is_relevant(keyword_summary):
             matched_vacancies.append(vacancy)
 
     stats.matched_by_keywords = len(matched_vacancies)
