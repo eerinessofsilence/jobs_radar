@@ -173,6 +173,41 @@ class RunnerOrchestrationTest(unittest.TestCase):
         run_stats = append_run.call_args.args[2]
         self.assertEqual(1, run_stats.cached_analysis_vacancies)
 
+    def test_run_warns_when_configured_source_returns_zero_vacancies(self) -> None:
+        radar_settings = make_radar()
+        config = make_config(radar_settings)
+        config.dou_rss_urls = ["https://jobs.dou.ua/feed"]
+        config.djinni_rss_urls = ["https://djinni.co/jobs/rss"]
+        djinni_vacancy = make_vacancy("https://example.com/djinni")
+        djinni_vacancy.source = "Djinni"
+        sheets = SimpleNamespace(
+            worksheet=object(),
+            headers=["URL", "Score"],
+            existing_urls=set(),
+            seen_worksheet=object(),
+            seen_headers=["URL", "Score"],
+            seen_urls={djinni_vacancy.url},
+            runs_worksheet=object(),
+            runs_headers=["Run Date", "Errors"],
+            analysis_cache_worksheet=object(),
+            analysis_cache_headers=["URL", "Score"],
+            analysis_cache={},
+        )
+
+        with (
+            patch.object(runner, "setup_logging"),
+            patch.object(runner, "load_config", return_value=config),
+            patch.object(runner, "OpenAI", return_value=object()),
+            patch.object(runner, "open_sheet", return_value=sheets),
+            patch.object(runner, "collect_rss_vacancies", return_value=[djinni_vacancy]),
+            patch.object(runner, "collect_email_alert_vacancies", return_value=[]),
+            patch.object(runner, "append_run_summary", return_value=1) as append_run,
+            patch.object(runner, "send_telegram_message"),
+        ):
+            runner.run()
+
+        self.assertIn("DOU", append_run.call_args.kwargs["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

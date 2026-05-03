@@ -83,6 +83,8 @@ class AnalysisResult:
 @dataclass(slots=True)
 class RunStats:
     total_fetched: int = 0
+    missing_company: int = 0
+    missing_salary: int = 0
     matched_by_keywords: int = 0
     skipped_by_title_prefilter: int = 0
     skipped_by_experience_prefilter: int = 0

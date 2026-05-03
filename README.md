@@ -35,7 +35,7 @@ The script also creates/uses a `Seen` worksheet tab automatically. It stores eve
 
 The script also creates/uses an `AnalysisCache` worksheet tab automatically. It stores successful OpenAI JSON responses by model and normalized URL so future runs can reuse the analysis without another OpenAI call.
 
-The script also creates/uses a `Runs` worksheet tab automatically. Each radar run appends one row with model, fetched/matched/analyzed/appended counts, filter skips, tracked/seen/similar duplicates, run-limit skips, local pre-score/cache counts, low-score skips, token usage, estimated cost if configured, sheet URL, and any warnings/errors.
+The script also creates/uses a `Runs` worksheet tab automatically. Each radar run appends one row with model, fetched/matched/analyzed/appended counts, missing company/salary counts, filter skips, tracked/seen/similar duplicates, run-limit skips, local pre-score/cache counts, low-score skips, token usage, estimated cost if configured, sheet URL, and any warnings/errors.
 
 Recommended `Status` values:
 
@@ -203,7 +203,7 @@ Optional repository variables:
 - `JOB_RADAR_CONFIG` - optional legacy single-file config override.
 - `DOU_RSS_URLS` - defaults to developer-focused DOU category feeds: Python, Front End, Node.js, and React Native.
 - `DJINNI_RSS_URLS` - defaults to developer-focused Djinni category feeds: Python, Fullstack, React.js, Node.js, and React Native.
-- `MIN_SCORE` - defaults to `5`; only vacancies with this score or higher are appended and shown in the Telegram top list.
+- `MIN_SCORE` - defaults to `5`; only vacancies with this score or higher are appended. Telegram groups scored vacancies into `Strong`, `Maybe`, and `Skipped notable`.
 - `MAX_JOBS_PER_RUN` - defaults to `20`; limits OpenAI analysis per run.
 - `OPENAI_MODEL` - defaults to `gpt-4o-mini`.
 - `OPENAI_TIMEOUT_SECONDS` - defaults to `60`; timeout for OpenAI analysis calls.
@@ -296,7 +296,7 @@ This avoids browser automation and avoids scraping protected/private pages.
 18. Marks successfully analyzed vacancies in the `Seen` worksheet to avoid re-analyzing low-score repeats.
 19. Appends successful OpenAI responses to `AnalysisCache`.
 20. Appends one run-history row to the `Runs` worksheet with counts, skips, token usage, and warnings.
-21. Sends a Telegram summary with the same operational context, a Google Sheet link, and the top 5 vacancies by score.
+21. Sends a Telegram summary with the same operational context, missing company/salary counts, a Google Sheet link, and grouped vacancy lists: `Strong`, `Maybe`, and `Skipped notable`.
 
 ## Scoring
 

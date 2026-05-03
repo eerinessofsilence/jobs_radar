@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+
 from .http_utils import retry_session
 from .models import AnalysisResult, RunStats, Vacancy
+from .text import compact_text, truncate_text
 
 
 def telegram_chunks(message: str, max_length: int = 3900) -> list[str]:
@@ -46,6 +49,8 @@ def token_usage_line(stats: RunStats) -> str:
 def build_context_lines(stats: RunStats) -> list[str]:
     return [
         f"Total fetched: {stats.total_fetched}",
+        f"Missing company: {stats.missing_company}",
+        f"Missing salary: {stats.missing_salary}",
         f"Matched by keywords: {stats.matched_by_keywords}",
         f"Skipped by title prefilter: {stats.skipped_by_title_prefilter}",
         f"Skipped by experience prefilter: {stats.skipped_by_experience_prefilter}",
@@ -63,6 +68,44 @@ def build_context_lines(stats: RunStats) -> list[str]:
         f"Marked seen: {stats.seen_vacancies}",
         token_usage_line(stats),
     ]
+
+
+def vacancy_work_format(vacancy: Vacancy) -> str:
+    haystack = compact_text(f"{vacancy.location}\n{vacancy.description}").lower()
+    if re.search(r"\bpart[- ]time\b|\bpart time\b|\bнеповна\b|\bчасткова\b", haystack):
+        return "Part-time"
+    if re.search(r"\bfreelance\b|\bcontract\b|\bproject[- ]based\b|\bпроєкт", haystack):
+        return "Freelance"
+    if re.search(r"\boffice[- ]only\b|\bon[- ]site\b|\boffline\b|\bофіс\b|\bофис\b", haystack):
+        return "Office"
+    if re.search(r"\bremote\b|\bremotely\b|\bвіддалено\b", haystack):
+        return "Remote"
+    if re.search(r"\bhybrid\b|\bгібрид\b", haystack):
+        return "Hybrid"
+    return vacancy.location or "-"
+
+
+def compact_vacancy_line(vacancy: Vacancy, analysis: AnalysisResult) -> str:
+    title = truncate_text(vacancy.title, 72)
+    company = vacancy.company or "-"
+    salary = vacancy.salary or "-"
+    work_format = vacancy_work_format(vacancy)
+    return f"{analysis.score} | {title} | {company} | {salary} | {work_format}"
+
+
+def append_vacancy_group(
+    lines: list[str],
+    title: str,
+    vacancies: list[tuple[Vacancy, AnalysisResult]],
+) -> None:
+    if not vacancies:
+        return
+
+    lines.append("")
+    lines.append(title)
+    for vacancy, analysis in vacancies:
+        lines.append(compact_vacancy_line(vacancy, analysis))
+        lines.append(vacancy.url)
 
 
 def build_no_new_message(stats: RunStats, sheet_url: str = "", warning: str = "") -> str:
@@ -85,10 +128,24 @@ def build_summary_message(
     sheet_url: str = "",
     warning: str = "",
 ) -> str:
-    eligible_top = [
-        (vacancy, analysis) for vacancy, analysis in analyzed if analysis.score >= min_score
-    ]
-    top_vacancies = sorted(eligible_top, key=lambda item: item[1].score, reverse=True)[:5]
+    scored = [(vacancy, analysis) for vacancy, analysis in analyzed if analysis.score > 0]
+    sorted_scored = sorted(scored, key=lambda item: item[1].score, reverse=True)
+    strong_min_score = max(8, min_score)
+    strong_vacancies = [
+        (vacancy, analysis)
+        for vacancy, analysis in sorted_scored
+        if analysis.score >= strong_min_score
+    ][:5]
+    maybe_vacancies = [
+        (vacancy, analysis)
+        for vacancy, analysis in sorted_scored
+        if min_score <= analysis.score < strong_min_score
+    ][:5]
+    skipped_notable = [
+        (vacancy, analysis)
+        for vacancy, analysis in sorted_scored
+        if analysis.score < min_score
+    ][:5]
 
     lines = ["Job radar summary", *build_context_lines(stats)]
 
@@ -101,16 +158,12 @@ def build_summary_message(
         lines.append("")
         lines.append(f"Warning: {warning}")
 
-    if top_vacancies:
-        lines.append("")
-        lines.append("Top vacancies:")
-        for index, (vacancy, analysis) in enumerate(top_vacancies, start=1):
-            company = f" at {vacancy.company}" if vacancy.company else ""
-            lines.append(f"{index}. {vacancy.title}{company}")
-            lines.append(f"Score: {analysis.score}")
-            lines.append(vacancy.url)
+    if strong_vacancies or maybe_vacancies or skipped_notable:
+        append_vacancy_group(lines, "Strong", strong_vacancies)
+        append_vacancy_group(lines, "Maybe", maybe_vacancies)
+        append_vacancy_group(lines, "Skipped notable", skipped_notable)
     else:
         lines.append("")
-        lines.append("No analyzed vacancies met the minimum score for the top list.")
+        lines.append("No scored vacancies to list.")
 
     return "\n".join(lines)

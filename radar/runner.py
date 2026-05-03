@@ -127,6 +127,23 @@ def update_openai_usage_stats(
     stats.estimated_cost_usd = sum(estimated_costs) if estimated_costs else None
 
 
+def source_zero_warning(config: Config, vacancies: list[Vacancy]) -> str:
+    source_counts: dict[str, int] = {}
+    for vacancy in vacancies:
+        source_counts[vacancy.source] = source_counts.get(vacancy.source, 0) + 1
+
+    missing_sources: list[str] = []
+    if config.dou_rss_urls and source_counts.get("DOU", 0) == 0:
+        missing_sources.append("DOU")
+    if config.djinni_rss_urls and source_counts.get("Djinni", 0) == 0:
+        missing_sources.append("Djinni")
+
+    if not missing_sources:
+        return ""
+
+    return "No vacancies parsed from configured source(s): " + ", ".join(missing_sources) + "."
+
+
 def cached_analysis_for_vacancy(
     sheets: OpenedSheets,
     config: Config,
@@ -194,6 +211,9 @@ def run() -> None:
     fetched_vacancies = rss_vacancies + email_vacancies
 
     stats = RunStats(total_fetched=len(fetched_vacancies))
+    stats.missing_company = sum(1 for vacancy in fetched_vacancies if not vacancy.company)
+    stats.missing_salary = sum(1 for vacancy in fetched_vacancies if not vacancy.salary)
+    warning = source_zero_warning(config, fetched_vacancies)
 
     matched_vacancies: list[Vacancy] = []
     for vacancy in fetched_vacancies:
@@ -238,9 +258,12 @@ def run() -> None:
     stats.skipped_similar_vacancies = skipped_similar
 
     logging.info(
-        "[filter] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | "
+        "[filter] fetched=%s | missing_company=%s | missing_salary=%s | matched=%s | "
+        "title_skip=%s | exp_skip=%s | "
         "neg_skip=%s | new=%s | tracked/seen/dup=%s | similar_dup=%s",
         stats.total_fetched,
+        stats.missing_company,
+        stats.missing_salary,
         stats.matched_by_keywords,
         stats.skipped_by_title_prefilter,
         stats.skipped_by_experience_prefilter,
@@ -251,7 +274,7 @@ def run() -> None:
     )
 
     if not new_vacancies:
-        warning = record_run_summary(sheets, stats, config, "")
+        warning = record_run_summary(sheets, stats, config, warning)
         message = build_no_new_message(stats, google_sheet_url(config), warning=warning)
         send_telegram_message(config.telegram_bot_token, config.telegram_chat_id, message)
         logging.info("[done] no new matching vacancies | telegram=sent")
@@ -270,7 +293,6 @@ def run() -> None:
         logging.info("[analyze] %s new vacancies queued", len(vacancies_to_analyze))
 
     analyzed: list[tuple[Vacancy, AnalysisResult]] = []
-    warning = ""
     for index, vacancy in enumerate(vacancies_to_analyze, start=1):
         logging.debug(
             "[analyze] %s/%s | url=%s | keywords=%s",

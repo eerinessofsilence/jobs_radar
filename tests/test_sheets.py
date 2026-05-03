@@ -106,6 +106,8 @@ def make_config(radar: RadarSettings) -> Config:
 def make_run_stats() -> RunStats:
     return RunStats(
         total_fetched=10,
+        missing_company=2,
+        missing_salary=6,
         matched_by_keywords=8,
         skipped_by_title_prefilter=1,
         skipped_by_experience_prefilter=1,
@@ -216,6 +218,8 @@ class SheetsTest(unittest.TestCase):
             values_by_header["Sheet URL"],
         )
         self.assertEqual(10, values_by_header["Total Fetched"])
+        self.assertEqual(2, values_by_header["Missing Company"])
+        self.assertEqual(6, values_by_header["Missing Salary"])
         self.assertEqual(2, values_by_header["Tracked/Seen/Duplicate"])
         self.assertEqual(1, values_by_header["Similar Duplicate Skipped"])
         self.assertEqual(1, values_by_header["Skipped By Run Limit"])
