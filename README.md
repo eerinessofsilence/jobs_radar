@@ -8,7 +8,7 @@ The script does not auto-apply to jobs. It only generates draft replies.
 
 - `job_radar.py` - thin entry point for the scheduled radar run
 - `reset_sheet.py` - clears previous vacancy rows from Google Sheets without changing formatting
-- `radar/` - application package with RSS, filters, OpenAI analysis, Sheets, Telegram, config loading, and orchestration
+- `radar/` - application package with RSS feed loading, normalization, extraction, enrichment hooks, filters, OpenAI analysis, Sheets, Telegram, config loading, and orchestration
 - `tests/` - unit tests
 - `job_radar_profile.json` - personal search profile, keywords, experience limits, negative filters, and RSS defaults
 - `job_radar_settings.json` - software settings such as headers, date formatting, scoring prompt, and row defaults

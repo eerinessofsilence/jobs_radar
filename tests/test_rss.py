@@ -1,7 +1,8 @@
 import unittest
 
 import feedparser
-from radar.rss import extract_company, extract_salary, normalize_entry
+from radar.extractors import DjinniExtractor, DouExtractor
+from radar.rss import extract_company, extract_salary, extractor_for_source, normalize_entry
 
 RSS_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -37,6 +38,11 @@ class RssTest(unittest.TestCase):
         self.assertEqual("https://example.com/jobs/python?id=42", vacancy.url)
         self.assertEqual("2026-04-29T09:30:00+00:00", vacancy.published_date)
         self.assertIn("Python, Django, REST API.", vacancy.description)
+        self.assertEqual("Fixture", vacancy.metadata["source"])
+        self.assertEqual(
+            "Python Developer $2,000-3,000 at Acme",
+            vacancy.metadata["rss"]["title"],
+        )
 
     def test_extract_salary_uses_explicit_description_line(self) -> None:
         salary = extract_salary(
@@ -78,6 +84,10 @@ class RssTest(unittest.TestCase):
         )
 
         self.assertEqual("Ajax Systems", company)
+
+    def test_source_specific_extractors_are_registered(self) -> None:
+        self.assertIsInstance(extractor_for_source("DOU"), DouExtractor)
+        self.assertIsInstance(extractor_for_source("Djinni"), DjinniExtractor)
 
 
 if __name__ == "__main__":

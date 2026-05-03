@@ -15,7 +15,7 @@ from .filters import (
 from .logging_utils import log_run_start, setup_logging
 from .models import AnalysisResult, Config, OpenAIQuotaError, RunStats, Vacancy
 from .openai_analysis import analyze_vacancy
-from .rss import collect_email_alert_vacancies, collect_rss_vacancies
+from .feeds import collect_email_alert_vacancies, collect_rss_vacancies
 from .settings import load_config
 from .sheets import (
     OpenedSheets,

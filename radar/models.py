@@ -63,6 +63,7 @@ class Vacancy:
     published_date: str
     description: str
     matched_keywords: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
