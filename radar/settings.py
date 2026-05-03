@@ -13,6 +13,7 @@ from .models import Config, RadarSettings
 
 DEFAULT_CONFIG_PATH = "job_radar_config.json"
 DEFAULT_PROFILE_CONFIG_PATH = "job_radar_profile.json"
+DEFAULT_PROFILE_EXAMPLE_CONFIG_PATH = "job_radar_profile.example.json"
 DEFAULT_SETTINGS_CONFIG_PATH = "job_radar_settings.json"
 
 
@@ -93,6 +94,18 @@ def load_json_file(path: Path) -> dict[str, Any]:
 
     if not isinstance(data, dict):
         raise RuntimeError(f"Config file must contain a JSON object: {path}")
+
+    return data
+
+
+def load_json_value(raw_json: str, source_label: str) -> dict[str, Any]:
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"{source_label} is not valid JSON: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise RuntimeError(f"{source_label} must contain a JSON object.")
 
     return data
 
@@ -179,10 +192,12 @@ def merge_config_data(
 
 def load_config_data() -> dict[str, Any]:
     legacy_config_value = os.getenv("JOB_RADAR_CONFIG", "").strip()
+    profile_json_value = os.getenv("JOB_RADAR_PROFILE_JSON", "").strip()
     profile_path = resolve_config_path(
         os.getenv("JOB_RADAR_PROFILE_CONFIG", DEFAULT_PROFILE_CONFIG_PATH).strip()
         or DEFAULT_PROFILE_CONFIG_PATH
     )
+    profile_example_path = resolve_config_path(DEFAULT_PROFILE_EXAMPLE_CONFIG_PATH)
     settings_path = resolve_config_path(
         os.getenv("JOB_RADAR_SETTINGS_CONFIG", DEFAULT_SETTINGS_CONFIG_PATH).strip()
         or DEFAULT_SETTINGS_CONFIG_PATH
@@ -194,8 +209,25 @@ def load_config_data() -> dict[str, Any]:
     ):
         return load_json_file(resolve_config_path(legacy_config_value))
 
+    if profile_json_value:
+        if not settings_path.exists():
+            raise RuntimeError(f"Settings config file not found: {settings_path}")
+        return merge_config_data(
+            load_json_value(profile_json_value, "JOB_RADAR_PROFILE_JSON"),
+            load_json_file(settings_path),
+        )
+
     if split_configs_exist:
         return merge_config_data(load_json_file(profile_path), load_json_file(settings_path))
+
+    if (
+        profile_path.name == DEFAULT_PROFILE_CONFIG_PATH
+        and profile_example_path.exists()
+        and settings_path.exists()
+    ):
+        return merge_config_data(
+            load_json_file(profile_example_path), load_json_file(settings_path)
+        )
 
     if profile_path.exists() != settings_path.exists():
         raise RuntimeError(

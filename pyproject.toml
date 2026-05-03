@@ -17,6 +17,7 @@ dependencies = [
 [project.scripts]
 job-radar = "radar.runner:run"
 job-radar-reset-sheet = "radar.reset:run"
+job-radar-setup-profile = "radar.profile_setup:run"
 
 [tool.ruff]
 line-length = 100

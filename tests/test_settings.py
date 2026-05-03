@@ -68,6 +68,25 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual("UTC", radar.found_date_timezone)
         self.assertEqual(["URL"], radar.sheet_headers)
 
+    def test_profile_json_env_overrides_profile_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings_path = Path(temp_dir) / "settings.json"
+            settings_path.write_text(json.dumps(minimal_settings()), encoding="utf-8")
+
+            profile = minimal_profile()
+            profile["candidate_profile"] = "Profile from secret"
+            env = {
+                "JOB_RADAR_PROFILE_JSON": json.dumps(profile),
+                "JOB_RADAR_PROFILE_CONFIG": str(Path(temp_dir) / "missing-profile.json"),
+                "JOB_RADAR_SETTINGS_CONFIG": str(settings_path),
+                "JOB_RADAR_CONFIG": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                data = load_config_data()
+                radar = load_radar_settings_from_data(data)
+
+        self.assertEqual("Profile from secret", radar.candidate_profile)
+
 
 if __name__ == "__main__":
     unittest.main()

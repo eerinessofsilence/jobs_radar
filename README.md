@@ -10,7 +10,7 @@ The script does not auto-apply to jobs. It only generates draft replies.
 - `reset_sheet.py` - clears previous vacancy rows from Google Sheets without changing formatting
 - `radar/` - application package with RSS feed loading, normalization, extraction, enrichment hooks, filters, OpenAI analysis, Sheets, Telegram, config loading, and orchestration
 - `tests/` - unit tests
-- `job_radar_profile.json` - personal search profile, keywords, experience limits, negative filters, and RSS defaults
+- `job_radar_profile.example.json` - safe template for the personal search profile, keywords, experience limits, negative filters, and RSS defaults
 - `job_radar_settings.json` - software settings such as headers, date formatting, scoring prompt, and row defaults
 - `pyproject.toml` - Ruff, mypy, project scripts, and local quality-check tasks
 - `requirements.in` - direct runtime dependencies
@@ -99,10 +99,13 @@ Use Python 3.11.
 ```bash
 cp .env.example .env
 pip install -r requirements.txt
+python setup_profile.py
 python job_radar.py
 ```
 
 Fill `.env` before running. For local use, put `GOOGLE_SERVICE_ACCOUNT_JSON` on one line or wrap it in quotes if your shell requires it.
+
+`python setup_profile.py` creates a local `job_radar_profile.json` from guided prompts. That file contains your personal job-search profile and is ignored by git.
 
 For development checks, install dev dependencies:
 
@@ -137,7 +140,13 @@ python reset_sheet.py --yes --worksheet Runs
 
 ## Radar Config
 
-Edit `job_radar_profile.json` for personal search criteria:
+Create or edit `job_radar_profile.json` for personal search criteria. The recommended local setup is:
+
+```bash
+python setup_profile.py
+```
+
+The repository only tracks `job_radar_profile.example.json`; your real `job_radar_profile.json` is ignored by git.
 
 - `candidate_profile` - profile OpenAI uses to judge each vacancy.
 - `experience` - target seniority and years-of-experience limits.
@@ -173,7 +182,7 @@ Use `required_title_keywords` to keep the radar focused on developer roles. A va
 
 Keyword matches are weighted before OpenAI: title matches are strongest, stack/requirements matches are next, and description-only matches are weakest. A single generic description-only keyword is not enough to enter the analysis queue.
 
-By default, the script reads `job_radar_profile.json` and `job_radar_settings.json` from the project directory. To use different split config files, set:
+By default, the script reads `job_radar_profile.json` and `job_radar_settings.json` from the project directory. If the local profile does not exist, it falls back to `job_radar_profile.example.json`. To use different split config files, set:
 
 ```env
 JOB_RADAR_PROFILE_CONFIG=path/to/profile.json
@@ -197,10 +206,11 @@ Add these repository secrets:
 - `GOOGLE_SERVICE_ACCOUNT_JSON` - the full Google service account JSON key contents.
 - `TELEGRAM_BOT_TOKEN` - from Telegram `@BotFather`.
 - `TELEGRAM_CHAT_ID` - from Telegram Bot API `getUpdates`.
+- `JOB_RADAR_PROFILE_JSON` - contents of your local `job_radar_profile.json`; use this for personal profile data instead of committing it.
 
 Optional repository variables:
 
-- `JOB_RADAR_PROFILE_CONFIG` - defaults to `job_radar_profile.json`.
+- `JOB_RADAR_PROFILE_CONFIG` - defaults to `job_radar_profile.json`; usually leave unset when using `JOB_RADAR_PROFILE_JSON`.
 - `JOB_RADAR_SETTINGS_CONFIG` - defaults to `job_radar_settings.json`.
 - `JOB_RADAR_CONFIG` - optional legacy single-file config override.
 - `DOU_RSS_URLS` - defaults to developer-focused DOU category feeds: Python, Front End, Node.js, and React Native.

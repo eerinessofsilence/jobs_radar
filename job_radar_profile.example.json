@@ -1,11 +1,11 @@
 {
-  "candidate_profile": "I am looking for freelance, part-time, remote, or project-based work related to backend and full-stack development, including API integrations and modern web applications. I specialize in Python (Django, FastAPI), REST APIs, PostgreSQL, and Docker, and also have experience building frontend interfaces using React and TypeScript. I am interested in projects involving system integrations, backend architecture, full-stack web applications, and internal tools for businesses. I prefer practical development tasks combining backend and frontend work. I am also open to frontend-focused roles with React, and interested in exploring React Native for mobile development. I do not want office-only jobs, unrelated sales roles, or positions requiring heavy enterprise experience unless development is the core focus.",
+  "candidate_profile": "Describe what kind of work you want, your strongest skills, preferred work format, domains you like, and deal-breakers. Example: I am looking for remote backend or full-stack work involving Python, APIs, PostgreSQL, and practical business tools. I prefer freelance, part-time, or project-based work and do not want office-only or unrelated support/sales roles.",
   "experience": {
     "target_level": "Junior to Middle, not higher than Middle",
     "candidate_years": "3",
     "preferred_required_years": "0-3 years",
     "max_required_years": 3,
-    "guidance": "Prefer roles that are realistic for junior, strong junior, or middle-level candidates. Reject roles that require more than 3 years of experience. Penalize senior, lead, architect, staff, principal, head-of-engineering, and roles that require many years of deep enterprise experience."
+    "guidance": "Prefer roles that are realistic for the target level. Reject roles that require more than the configured maximum years of experience. Penalize senior, lead, architect, staff, principal, and management roles unless they clearly fit the profile."
   },
   "required_title_keywords": [
     "Developer",
@@ -54,8 +54,6 @@
     "FastAPI",
     "TypeScript",
     "Next.js",
-    "Vite.js",
-    "Vite",
     "React",
     "React Native",
     "Docker",

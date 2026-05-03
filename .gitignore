@@ -1,4 +1,5 @@
 .env
+job_radar_profile.json
 venv/
 __pycache__/
 *.py[cod]
