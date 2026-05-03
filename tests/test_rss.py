@@ -1,7 +1,7 @@
 import unittest
 
 import feedparser
-from radar.rss import extract_salary, normalize_entry
+from radar.rss import extract_company, extract_salary, normalize_entry
 
 RSS_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -51,6 +51,33 @@ class RssTest(unittest.TestCase):
         salary = extract_salary({}, "Backend Developer", "Salary: 20 days vacation")
 
         self.assertEqual("", salary)
+
+    def test_extract_company_parses_dou_ukrainian_title_format(self) -> None:
+        company = extract_company(
+            {},
+            "Python Engineer в Lumen Global, віддалено",
+            "",
+        )
+
+        self.assertEqual("Lumen Global", company)
+
+    def test_extract_company_strips_salary_and_location_from_dou_title(self) -> None:
+        company = extract_company(
+            {},
+            "Full Stack Developer (Intern) в Spredo Ltd., $800–1000, віддалено",
+            "",
+        )
+
+        self.assertEqual("Spredo Ltd.", company)
+
+    def test_extract_company_uses_djinni_description_intro_when_explicit(self) -> None:
+        company = extract_company(
+            {},
+            "Python Developer",
+            "Ajax Systems — міжнародна технологічна компанія.\n\nRequirements: Python.",
+        )
+
+        self.assertEqual("Ajax Systems", company)
 
 
 if __name__ == "__main__":

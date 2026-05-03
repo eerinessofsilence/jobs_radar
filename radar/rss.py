@@ -58,6 +58,58 @@ def parse_published_date(entry: Any) -> str:
         return str(raw_date)
 
 
+TRAILING_TITLE_CONTEXT_PATTERN = re.compile(
+    r"^(?:"
+    r"(?:віддалено|remote|remotely|office|hybrid|гібрид|офіс|офис|"
+    r"київ|kyiv|kiev|львів|lviv|харків|kharkiv|одеса|odesa|дніпро|dnipro|"
+    r"україна|ukraine|europe|eu|poland|warsaw|польща|за кордоном)"
+    r"|(?:\$|\u20ac|\u00a3|\d).*)$",
+    flags=re.IGNORECASE,
+)
+
+
+def strip_title_context(value: str) -> str:
+    parts = [part.strip() for part in compact_text(value).split(",") if part.strip()]
+    while len(parts) > 1 and TRAILING_TITLE_CONTEXT_PATTERN.search(parts[-1]):
+        parts.pop()
+    return compact_text(", ".join(parts)).strip(" ,;:")
+
+
+def extract_company_from_title(title: str) -> str:
+    title_match = re.search(r"\s+(at|[ву])\s+(.+)$", title, flags=re.IGNORECASE)
+    if not title_match:
+        return ""
+
+    marker = title_match.group(1).lower()
+    raw_company = title_match.group(2)
+    if marker in {"в", "у"}:
+        raw_company = raw_company.split(",", 1)[0]
+
+    company = strip_title_context(raw_company)
+    if company and len(company) <= 120:
+        return company
+
+    return ""
+
+
+def extract_company_from_description_intro(description: str) -> str:
+    first_lines = [compact_text(line) for line in description.splitlines()[:5]]
+    intro = next((line for line in first_lines if line), "")
+    if not intro:
+        return ""
+
+    intro_match = re.match(
+        r"^([A-ZА-ЯІЇЄҐ][\wА-Яа-яІіЇїЄєҐґ&.'’ -]{1,80}?)\s+"
+        r"(?:[-\u2013\u2014]|is|are|це)\s+",
+        intro,
+        flags=re.IGNORECASE,
+    )
+    if intro_match:
+        return compact_text(intro_match.group(1)).strip(" ,.;:")
+
+    return ""
+
+
 def extract_company(entry: Any, title: str, description: str) -> str:
     company = first_entry_value(
         entry,
@@ -74,9 +126,9 @@ def extract_company(entry: Any, title: str, description: str) -> str:
     if company:
         return compact_text(company)
 
-    title_match = re.search(r"\s+at\s+(.+)$", title, flags=re.IGNORECASE)
-    if title_match and len(title_match.group(1)) <= 80:
-        return compact_text(title_match.group(1))
+    company = extract_company_from_title(title)
+    if company:
+        return company
 
     description_match = re.search(
         r"(?im)^\s*(?:company|\u043a\u043e\u043c\u043f\u0430\u043d\u0456\u044f|"
@@ -86,7 +138,7 @@ def extract_company(entry: Any, title: str, description: str) -> str:
     if description_match:
         return compact_text(description_match.group(1))[:120]
 
-    return ""
+    return extract_company_from_description_intro(description)[:120]
 
 
 def extract_location(entry: Any, description: str) -> str:
