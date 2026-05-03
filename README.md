@@ -31,9 +31,11 @@ The script will create the header row if the first worksheet is empty. If your s
 
 The canonical header list lives in `job_radar_settings.json` under `sheet_headers`.
 
-The script also creates/uses a `Seen` worksheet tab automatically. It stores every URL that was successfully analyzed by OpenAI, including vacancies skipped because their score is below `MIN_SCORE`. This prevents the same low-score vacancy from being analyzed and paid for again on the next run. Technical failures with score `0` are not marked seen, so they can be retried later.
+The script also creates/uses a `Seen` worksheet tab automatically. It stores every URL that was successfully analyzed or locally pre-scored, including vacancies skipped because their score is below `MIN_SCORE`. This prevents the same low-score vacancy from being analyzed and paid for again on the next run. Technical failures with score `0` are not marked seen, so they can be retried later.
 
-The script also creates/uses a `Runs` worksheet tab automatically. Each radar run appends one row with model, fetched/matched/analyzed/appended counts, filter skips, tracked/seen duplicates, run-limit skips, low-score skips, token usage, estimated cost if configured, sheet URL, and any warnings/errors.
+The script also creates/uses an `AnalysisCache` worksheet tab automatically. It stores successful OpenAI JSON responses by model and normalized URL so future runs can reuse the analysis without another OpenAI call.
+
+The script also creates/uses a `Runs` worksheet tab automatically. Each radar run appends one row with model, fetched/matched/analyzed/appended counts, filter skips, tracked/seen/similar duplicates, run-limit skips, local pre-score/cache counts, low-score skips, token usage, estimated cost if configured, sheet URL, and any warnings/errors.
 
 Recommended `Status` values:
 
@@ -282,14 +284,19 @@ This avoids browser automation and avoids scraping protected/private pages.
 6. Applies `negative_prefilter` before OpenAI.
 7. Loads existing URLs from Google Sheets.
 8. Skips URLs already present in the sheet.
-9. Interleaves new vacancies by source before applying `MAX_JOBS_PER_RUN`, so one source does not crowd out the other.
-10. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
-11. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric, timeout, retry count, and completion-token cap.
-12. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
-13. Appends analyzed vacancies whose score is at least `MIN_SCORE`.
-14. Marks successfully analyzed vacancies in the `Seen` worksheet to avoid re-analyzing low-score repeats.
-15. Appends one run-history row to the `Runs` worksheet with counts, skips, token usage, and warnings.
-16. Sends a Telegram summary with the same operational context, a Google Sheet link, and the top 5 vacancies by score.
+9. Deduplicates similar vacancies by normalized source, company, and title.
+10. Interleaves new vacancies by source before applying `MAX_JOBS_PER_RUN`, so one source does not crowd out the other.
+11. Limits OpenAI analysis to `MAX_JOBS_PER_RUN`.
+12. Reuses cached OpenAI analysis from `AnalysisCache` when the model and URL match.
+13. Locally pre-scores obvious non-fits before OpenAI.
+14. Sends a compacted vacancy description to OpenAI, prioritizing intro, requirements, responsibilities, stack, format, and salary sections.
+15. Requests strict JSON from OpenAI with a configured 1-10 scoring rubric, timeout, retry count, and completion-token cap.
+16. Recovers from invalid JSON by stripping markdown fences and extracting the first JSON object.
+17. Appends analyzed vacancies whose score is at least `MIN_SCORE`.
+18. Marks successfully analyzed vacancies in the `Seen` worksheet to avoid re-analyzing low-score repeats.
+19. Appends successful OpenAI responses to `AnalysisCache`.
+20. Appends one run-history row to the `Runs` worksheet with counts, skips, token usage, and warnings.
+21. Sends a Telegram summary with the same operational context, a Google Sheet link, and the top 5 vacancies by score.
 
 ## Scoring
 

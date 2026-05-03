@@ -19,6 +19,7 @@ from .urls import normalize_url
 SHEET_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SEEN_WORKSHEET_TITLE = "Seen"
 RUNS_WORKSHEET_TITLE = "Runs"
+ANALYSIS_CACHE_WORKSHEET_TITLE = "AnalysisCache"
 SEEN_SHEET_HEADERS = [
     "Analyzed Date",
     "Source",
@@ -40,9 +41,12 @@ RUNS_SHEET_HEADERS = [
     "Experience Skipped",
     "Negative Skipped",
     "Tracked/Seen/Duplicate",
+    "Similar Duplicate Skipped",
     "New Vacancies",
     "Queued For Analysis",
     "Skipped By Run Limit",
+    "Local Pre-Score",
+    "Cached Analysis",
     "Analyzed",
     "Appended",
     "Low Score Skipped",
@@ -52,6 +56,23 @@ RUNS_SHEET_HEADERS = [
     "Total Tokens",
     "Estimated Cost USD",
     "Errors",
+]
+ANALYSIS_CACHE_HEADERS = [
+    "Analyzed Date",
+    "Model",
+    "URL",
+    "Source",
+    "Title",
+    "Company",
+    "Score",
+    "Fit Reason",
+    "Risks",
+    "Generated Reply",
+    "Prompt Tokens",
+    "Completion Tokens",
+    "Total Tokens",
+    "Estimated Cost USD",
+    "Raw Response",
 ]
 
 
@@ -65,6 +86,9 @@ class OpenedSheets:
     seen_urls: set[str]
     runs_worksheet: gspread.Worksheet
     runs_headers: list[str]
+    analysis_cache_worksheet: gspread.Worksheet
+    analysis_cache_headers: list[str]
+    analysis_cache: dict[tuple[str, str], AnalysisResult]
 
 
 def parse_service_account_info(raw_json: str) -> dict[str, Any]:
@@ -150,6 +174,15 @@ def get_or_create_runs_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Wo
     )
 
 
+def get_or_create_analysis_cache_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Worksheet:
+    return get_or_create_worksheet(
+        spreadsheet,
+        ANALYSIS_CACHE_WORKSHEET_TITLE,
+        len(ANALYSIS_CACHE_HEADERS),
+        "OpenAI analysis cache",
+    )
+
+
 def get_or_create_worksheet(
     spreadsheet: gspread.Spreadsheet,
     title: str,
@@ -205,6 +238,12 @@ def open_sheet(config: Config) -> OpenedSheets:
     seen_urls = load_urls_from_headers(seen_worksheet, seen_headers)
     runs_worksheet = get_or_create_runs_worksheet(spreadsheet)
     runs_headers = ensure_sheet_headers(runs_worksheet, RUNS_SHEET_HEADERS)
+    analysis_cache_worksheet = get_or_create_analysis_cache_worksheet(spreadsheet)
+    analysis_cache_headers = ensure_sheet_headers(
+        analysis_cache_worksheet,
+        ANALYSIS_CACHE_HEADERS,
+    )
+    analysis_cache = load_analysis_cache(analysis_cache_worksheet, analysis_cache_headers)
     return OpenedSheets(
         worksheet=worksheet,
         headers=headers,
@@ -214,6 +253,9 @@ def open_sheet(config: Config) -> OpenedSheets:
         seen_urls=seen_urls,
         runs_worksheet=runs_worksheet,
         runs_headers=runs_headers,
+        analysis_cache_worksheet=analysis_cache_worksheet,
+        analysis_cache_headers=analysis_cache_headers,
+        analysis_cache=analysis_cache,
     )
 
 
@@ -347,6 +389,117 @@ def append_seen_vacancies(
     return len(rows)
 
 
+def parse_int_cell(value: Any) -> int:
+    try:
+        return int(float(str(value).strip() or "0"))
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_float_cell(value: Any) -> float | None:
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def load_analysis_cache(
+    worksheet: gspread.Worksheet,
+    headers: list[str],
+) -> dict[tuple[str, str], AnalysisResult]:
+    if "URL" not in headers or "Model" not in headers:
+        return {}
+
+    rows = worksheet.get_all_values()
+    cache: dict[tuple[str, str], AnalysisResult] = {}
+    for row in rows[1:]:
+        values = {
+            header: row[index] if index < len(row) else ""
+            for index, header in enumerate(headers)
+        }
+        url = normalize_url(str(values.get("URL", "")))
+        model = str(values.get("Model", "")).strip()
+        score = parse_int_cell(values.get("Score", ""))
+        if not url or not model or score <= 0:
+            continue
+
+        cache[(model, url)] = AnalysisResult(
+            score=score,
+            fit_reason=str(values.get("Fit Reason", "")),
+            risks=str(values.get("Risks", "")),
+            generated_reply=str(values.get("Generated Reply", "")),
+            prompt_tokens=parse_int_cell(values.get("Prompt Tokens", "")),
+            completion_tokens=parse_int_cell(values.get("Completion Tokens", "")),
+            total_tokens=parse_int_cell(values.get("Total Tokens", "")),
+            estimated_cost_usd=parse_float_cell(values.get("Estimated Cost USD", "")),
+            raw_response=str(values.get("Raw Response", "")),
+            source="cache",
+        )
+    return cache
+
+
+def analysis_cache_key(model: str, vacancy: Vacancy) -> tuple[str, str]:
+    return (model, normalize_url(vacancy.url))
+
+
+def analysis_cache_row(
+    vacancy: Vacancy,
+    analysis: AnalysisResult,
+    headers: list[str],
+    analyzed_date: str,
+    model: str,
+) -> list[Any]:
+    values_by_header: dict[str, Any] = {
+        "Analyzed Date": analyzed_date,
+        "Model": model,
+        "URL": vacancy.url,
+        "Source": vacancy.source,
+        "Title": vacancy.title,
+        "Company": vacancy.company,
+        "Score": analysis.score,
+        "Fit Reason": analysis.fit_reason,
+        "Risks": analysis.risks,
+        "Generated Reply": analysis.generated_reply,
+        "Prompt Tokens": analysis.prompt_tokens,
+        "Completion Tokens": analysis.completion_tokens,
+        "Total Tokens": analysis.total_tokens,
+        "Estimated Cost USD": (
+            round(analysis.estimated_cost_usd, 6)
+            if analysis.estimated_cost_usd is not None
+            else ""
+        ),
+        "Raw Response": analysis.raw_response,
+    }
+    return [values_by_header.get(header, "") for header in headers]
+
+
+def append_analysis_cache_rows(
+    worksheet: gspread.Worksheet,
+    headers: list[str],
+    analyzed: list[tuple[Vacancy, AnalysisResult]],
+    radar: RadarSettings,
+    model: str,
+) -> int:
+    cacheable = [
+        (vacancy, analysis)
+        for vacancy, analysis in analyzed
+        if analysis.score > 0 and analysis.source == "openai"
+    ]
+    if not cacheable:
+        return 0
+
+    analyzed_date = format_found_date(radar)
+    rows = [
+        analysis_cache_row(vacancy, analysis, headers, analyzed_date, model)
+        for vacancy, analysis in cacheable
+    ]
+    worksheet.append_rows(rows, value_input_option=ValueInputOption.raw)
+    return len(rows)
+
+
 def google_sheet_url(config: Config) -> str:
     return f"https://docs.google.com/spreadsheets/d/{config.google_sheet_id}/edit"
 
@@ -368,9 +521,12 @@ def run_summary_row(
         "Experience Skipped": stats.skipped_by_experience_prefilter,
         "Negative Skipped": stats.skipped_by_negative_prefilter,
         "Tracked/Seen/Duplicate": stats.skipped_existing_vacancies,
+        "Similar Duplicate Skipped": stats.skipped_similar_vacancies,
         "New Vacancies": stats.new_vacancies,
         "Queued For Analysis": stats.queued_for_analysis,
         "Skipped By Run Limit": stats.skipped_by_run_limit,
+        "Local Pre-Score": stats.local_prescore_vacancies,
+        "Cached Analysis": stats.cached_analysis_vacancies,
         "Analyzed": stats.analyzed_vacancies,
         "Appended": stats.appended_vacancies,
         "Low Score Skipped": stats.skipped_low_score,

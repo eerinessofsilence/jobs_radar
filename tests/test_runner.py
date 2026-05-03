@@ -88,6 +88,9 @@ class RunnerOrchestrationTest(unittest.TestCase):
             seen_urls={"https://example.com/seen"},
             runs_worksheet=object(),
             runs_headers=["Run Date", "Total Fetched"],
+            analysis_cache_worksheet=object(),
+            analysis_cache_headers=["URL", "Score"],
+            analysis_cache={},
         )
 
         with (
@@ -104,6 +107,7 @@ class RunnerOrchestrationTest(unittest.TestCase):
             patch.object(runner, "analyze_vacancy", return_value=low_score_analysis) as analyze,
             patch.object(runner, "append_analyzed_vacancies", return_value=0) as append_main,
             patch.object(runner, "append_seen_vacancies", return_value=1) as append_seen,
+            patch.object(runner, "append_analysis_cache_rows", return_value=0),
             patch.object(runner, "append_run_summary", return_value=1) as append_run,
             patch.object(runner, "send_telegram_message") as send_message,
         ):
@@ -123,6 +127,51 @@ class RunnerOrchestrationTest(unittest.TestCase):
         self.assertEqual(1, run_stats.skipped_low_score)
         self.assertEqual(150, run_stats.total_tokens)
         send_message.assert_called_once()
+
+    def test_run_reuses_cached_analysis_before_openai(self) -> None:
+        radar_settings = make_radar()
+        config = make_config(radar_settings)
+        vacancy = make_vacancy("https://example.com/cached")
+        cached_analysis = AnalysisResult(
+            score=8,
+            fit_reason="Cached strong fit",
+            risks="",
+            generated_reply="Hi",
+            source="cache",
+        )
+        sheets = SimpleNamespace(
+            worksheet=object(),
+            headers=["URL", "Score"],
+            existing_urls=set(),
+            seen_worksheet=object(),
+            seen_headers=["URL", "Score"],
+            seen_urls=set(),
+            runs_worksheet=object(),
+            runs_headers=["Run Date", "Cached Analysis"],
+            analysis_cache_worksheet=object(),
+            analysis_cache_headers=["URL", "Score"],
+            analysis_cache={(config.openai_model, vacancy.url): cached_analysis},
+        )
+
+        with (
+            patch.object(runner, "setup_logging"),
+            patch.object(runner, "load_config", return_value=config),
+            patch.object(runner, "OpenAI", return_value=object()),
+            patch.object(runner, "open_sheet", return_value=sheets),
+            patch.object(runner, "collect_rss_vacancies", return_value=[vacancy]),
+            patch.object(runner, "collect_email_alert_vacancies", return_value=[]),
+            patch.object(runner, "analyze_vacancy") as analyze,
+            patch.object(runner, "append_analyzed_vacancies", return_value=1),
+            patch.object(runner, "append_seen_vacancies", return_value=1),
+            patch.object(runner, "append_analysis_cache_rows", return_value=0),
+            patch.object(runner, "append_run_summary", return_value=1) as append_run,
+            patch.object(runner, "send_telegram_message"),
+        ):
+            runner.run()
+
+        analyze.assert_not_called()
+        run_stats = append_run.call_args.args[2]
+        self.assertEqual(1, run_stats.cached_analysis_vacancies)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from openai import OpenAI
 
+from .feeds import collect_email_alert_vacancies, collect_rss_vacancies
 from .filters import (
     experience_prefilter_reason,
     filter_by_min_score,
@@ -12,13 +13,15 @@ from .filters import (
     negative_prefilter_reason,
     title_prefilter_reason,
 )
+from .local_rules import dedupe_similar_vacancies, local_prescore_vacancy
 from .logging_utils import log_run_start, setup_logging
 from .models import AnalysisResult, Config, OpenAIQuotaError, RunStats, Vacancy
 from .openai_analysis import analyze_vacancy
-from .feeds import collect_email_alert_vacancies, collect_rss_vacancies
 from .settings import load_config
 from .sheets import (
     OpenedSheets,
+    analysis_cache_key,
+    append_analysis_cache_rows,
     append_analyzed_vacancies,
     append_run_summary,
     append_seen_vacancies,
@@ -41,6 +44,16 @@ def unique_new_vacancies(vacancies: list[Vacancy], existing_urls: set[str]) -> l
         new_vacancies.append(vacancy)
 
     return new_vacancies
+
+
+def unique_new_and_similar_vacancies(
+    vacancies: list[Vacancy],
+    existing_urls: set[str],
+) -> tuple[list[Vacancy], int, int]:
+    url_unique = unique_new_vacancies(vacancies, existing_urls)
+    similar_unique, skipped_similar = dedupe_similar_vacancies(url_unique)
+    skipped_existing = len(vacancies) - len(url_unique)
+    return similar_unique, skipped_existing, skipped_similar
 
 
 def vacancy_published_timestamp(vacancy: Vacancy) -> float:
@@ -112,6 +125,29 @@ def update_openai_usage_stats(
     stats.completion_tokens = sum(analysis.completion_tokens for _, analysis in analyzed)
     stats.total_tokens = sum(analysis.total_tokens for _, analysis in analyzed)
     stats.estimated_cost_usd = sum(estimated_costs) if estimated_costs else None
+
+
+def cached_analysis_for_vacancy(
+    sheets: OpenedSheets,
+    config: Config,
+    vacancy: Vacancy,
+) -> AnalysisResult | None:
+    cached = sheets.analysis_cache.get(analysis_cache_key(config.openai_model, vacancy))
+    if not cached:
+        return None
+
+    return AnalysisResult(
+        score=cached.score,
+        fit_reason=cached.fit_reason,
+        risks=cached.risks,
+        generated_reply=cached.generated_reply,
+        prompt_tokens=0,
+        completion_tokens=0,
+        total_tokens=0,
+        estimated_cost_usd=None,
+        raw_response=cached.raw_response,
+        source="cache",
+    )
 
 
 def record_run_summary(
@@ -192,15 +228,18 @@ def run() -> None:
             continue
         prefiltered_vacancies.append(vacancy)
 
-    new_vacancies = interleave_vacancies_by_source(
-        unique_new_vacancies(prefiltered_vacancies, tracked_urls)
+    unique_vacancies, skipped_existing, skipped_similar = unique_new_and_similar_vacancies(
+        prefiltered_vacancies,
+        tracked_urls,
     )
+    new_vacancies = interleave_vacancies_by_source(unique_vacancies)
     stats.new_vacancies = len(new_vacancies)
-    stats.skipped_existing_vacancies = len(prefiltered_vacancies) - stats.new_vacancies
+    stats.skipped_existing_vacancies = skipped_existing
+    stats.skipped_similar_vacancies = skipped_similar
 
     logging.info(
         "[filter] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | "
-        "neg_skip=%s | new=%s | tracked/seen/dup=%s",
+        "neg_skip=%s | new=%s | tracked/seen/dup=%s | similar_dup=%s",
         stats.total_fetched,
         stats.matched_by_keywords,
         stats.skipped_by_title_prefilter,
@@ -208,6 +247,7 @@ def run() -> None:
         stats.skipped_by_negative_prefilter,
         stats.new_vacancies,
         stats.skipped_existing_vacancies,
+        stats.skipped_similar_vacancies,
     )
 
     if not new_vacancies:
@@ -239,21 +279,31 @@ def run() -> None:
             vacancy.url,
             keywords_label(vacancy.matched_keywords),
         )
-        try:
-            analysis = analyze_vacancy(
-                openai_client,
-                config.openai_model,
-                vacancy,
-                config.radar,
-                max_completion_tokens=config.openai_max_completion_tokens,
-                timeout_seconds=config.openai_timeout_seconds,
-                input_cost_per_1m=config.openai_input_cost_per_1m,
-                output_cost_per_1m=config.openai_output_cost_per_1m,
-            )
-        except OpenAIQuotaError as exc:
-            warning = str(exc)
-            logging.error("[openai] %s", warning)
-            break
+        analysis = cached_analysis_for_vacancy(sheets, config, vacancy)
+        if analysis:
+            stats.cached_analysis_vacancies += 1
+            logging.info("[cache] reused analysis | %s", vacancy_label(vacancy))
+        else:
+            analysis = local_prescore_vacancy(vacancy, config.radar, config.min_score)
+            if analysis:
+                stats.local_prescore_vacancies += 1
+                logging.info("[prescore] score=%s | %s", analysis.score, vacancy_label(vacancy))
+            else:
+                try:
+                    analysis = analyze_vacancy(
+                        openai_client,
+                        config.openai_model,
+                        vacancy,
+                        config.radar,
+                        max_completion_tokens=config.openai_max_completion_tokens,
+                        timeout_seconds=config.openai_timeout_seconds,
+                        input_cost_per_1m=config.openai_input_cost_per_1m,
+                        output_cost_per_1m=config.openai_output_cost_per_1m,
+                    )
+                except OpenAIQuotaError as exc:
+                    warning = str(exc)
+                    logging.error("[openai] %s", warning)
+                    break
 
         log_openai_usage(vacancy, analysis)
         action = "append" if analysis.score >= config.min_score else f"skip<{config.min_score}"
@@ -301,6 +351,19 @@ def run() -> None:
         logging.exception("[sheet] Failed to mark analyzed vacancies in Seen worksheet.")
         warning = combine_warning(warning, f"Seen tracking failed: {exc}")
 
+    try:
+        appended_cache_rows = append_analysis_cache_rows(
+            sheets.analysis_cache_worksheet,
+            sheets.analysis_cache_headers,
+            analyzed,
+            config.radar,
+            config.openai_model,
+        )
+        logging.info("[cache] appended=%s", appended_cache_rows)
+    except Exception as exc:
+        logging.exception("[sheet] Failed to append analysis cache rows.")
+        warning = combine_warning(warning, f"Analysis cache failed: {exc}")
+
     warning = record_run_summary(sheets, stats, config, warning)
 
     message = build_summary_message(
@@ -313,7 +376,8 @@ def run() -> None:
     send_telegram_message(config.telegram_bot_token, config.telegram_chat_id, message)
     logging.info(
         "[done] fetched=%s | matched=%s | title_skip=%s | exp_skip=%s | "
-        "neg_skip=%s | new=%s | analyzed=%s | appended=%s | telegram=sent",
+        "neg_skip=%s | new=%s | analyzed=%s | cached=%s | prescore=%s | appended=%s | "
+        "telegram=sent",
         stats.total_fetched,
         stats.matched_by_keywords,
         stats.skipped_by_title_prefilter,
@@ -321,6 +385,8 @@ def run() -> None:
         stats.skipped_by_negative_prefilter,
         stats.new_vacancies,
         stats.analyzed_vacancies,
+        stats.cached_analysis_vacancies,
+        stats.local_prescore_vacancies,
         stats.appended_vacancies,
     )
 

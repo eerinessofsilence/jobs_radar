@@ -176,8 +176,62 @@ def experience_prompt_section(radar: RadarSettings) -> str:
     return "\n".join(lines)
 
 
+DESCRIPTION_SECTION_PATTERN = re.compile(
+    r"\b(?:requirements?|responsibilit(?:y|ies)|what you'?ll do|tasks?|"
+    r"tech(?:nology)? stack|stack|format|work format|location|salary|compensation|"
+    r"вимоги|обов.?язки|задач[іи]|технології|стек|формат|локація|"
+    r"зарплата|компенсація|оплата)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def smart_description_excerpt(description: str, max_chars: int) -> str:
+    if len(description) <= max_chars:
+        return description
+
+    paragraphs = [
+        paragraph.strip()
+        for paragraph in re.split(r"\n{2,}", description)
+        if paragraph.strip()
+    ]
+    if not paragraphs:
+        return description[:max_chars]
+
+    selected: list[str] = []
+    used_indexes: set[int] = set()
+    for index, paragraph in enumerate(paragraphs[:2]):
+        selected.append(paragraph)
+        used_indexes.add(index)
+
+    for index, paragraph in enumerate(paragraphs):
+        if index in used_indexes:
+            continue
+        if DESCRIPTION_SECTION_PATTERN.search(paragraph):
+            selected.append(paragraph)
+            used_indexes.add(index)
+
+    excerpt = "\n\n".join(selected)
+    if len(excerpt) <= max_chars:
+        return excerpt
+
+    lines = [line.strip() for line in excerpt.splitlines() if line.strip()]
+    compact_lines: list[str] = []
+    current_size = 0
+    for line in lines:
+        line_size = len(line) + 1
+        if compact_lines and current_size + line_size > max_chars:
+            break
+        compact_lines.append(line)
+        current_size += line_size
+
+    if compact_lines:
+        return "\n".join(compact_lines)[:max_chars].rstrip()
+
+    return excerpt[:max_chars].rstrip()
+
+
 def vacancy_prompt(vacancy: Vacancy, radar: RadarSettings) -> str:
-    description = vacancy.description[: radar.description_max_chars]
+    description = smart_description_excerpt(vacancy.description, radar.description_max_chars)
     matched_keywords = ", ".join(vacancy.matched_keywords)
     experience_section = experience_prompt_section(radar)
 
@@ -247,6 +301,8 @@ def analyze_vacancy(
         )
         content = response.choices[0].message.content or ""
         analysis = parse_openai_json(content, radar.score_min, radar.score_max)
+        analysis.raw_response = content
+        analysis.source = "openai"
         return attach_openai_usage(
             analysis,
             response.usage,

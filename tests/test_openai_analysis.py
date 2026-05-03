@@ -5,6 +5,7 @@ from radar.openai_analysis import (
     attach_openai_usage,
     estimate_openai_cost_usd,
     parse_openai_json,
+    smart_description_excerpt,
     strip_markdown_fences,
 )
 
@@ -72,6 +73,24 @@ class OpenAIAnalysisTest(unittest.TestCase):
         self.assertEqual(250, result.completion_tokens)
         self.assertEqual(1250, result.total_tokens)
         self.assertAlmostEqual(0.0003, result.estimated_cost_usd or 0)
+
+    def test_smart_description_excerpt_keeps_relevant_sections(self) -> None:
+        description = "\n\n".join(
+            [
+                "Intro paragraph about the company.",
+                "Another intro line.",
+                "Perks and culture text that can be dropped.",
+                "Requirements: Python, Django, PostgreSQL.",
+                "Responsibilities: build APIs and integrations.",
+                "Format: remote, part-time.",
+            ]
+        )
+
+        excerpt = smart_description_excerpt(description, max_chars=140)
+
+        self.assertIn("Intro paragraph", excerpt)
+        self.assertIn("Requirements", excerpt)
+        self.assertNotIn("Perks and culture", excerpt)
 
 
 if __name__ == "__main__":

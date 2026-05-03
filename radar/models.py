@@ -76,6 +76,8 @@ class AnalysisResult:
     completion_tokens: int = 0
     total_tokens: int = 0
     estimated_cost_usd: float | None = None
+    raw_response: str = ""
+    source: str = "openai"
 
 
 @dataclass(slots=True)
@@ -86,10 +88,13 @@ class RunStats:
     skipped_by_experience_prefilter: int = 0
     skipped_by_negative_prefilter: int = 0
     skipped_existing_vacancies: int = 0
+    skipped_similar_vacancies: int = 0
     skipped_by_run_limit: int = 0
     skipped_low_score: int = 0
     new_vacancies: int = 0
     queued_for_analysis: int = 0
+    local_prescore_vacancies: int = 0
+    cached_analysis_vacancies: int = 0
     analyzed_vacancies: int = 0
     appended_vacancies: int = 0
     seen_vacancies: int = 0

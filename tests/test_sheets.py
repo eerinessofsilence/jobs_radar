@@ -4,10 +4,14 @@ from typing import cast
 import gspread
 from radar.models import AnalysisResult, Config, RadarSettings, RunStats, Vacancy
 from radar.sheets import (
+    ANALYSIS_CACHE_HEADERS,
     RUNS_SHEET_HEADERS,
     SEEN_SHEET_HEADERS,
+    analysis_cache_key,
+    analysis_cache_row,
     append_seen_vacancies,
     ensure_sheet_headers,
+    load_analysis_cache,
     load_urls_from_headers,
     run_summary_row,
     seen_row_for_vacancy,
@@ -36,6 +40,9 @@ class FakeWorksheet:
 
     def append_rows(self, rows: list[list[str]], value_input_option: object) -> None:
         self.appended_rows = rows
+
+    def get_all_values(self) -> list[list[str]]:
+        return self.rows
 
 
 def make_radar() -> RadarSettings:
@@ -104,10 +111,13 @@ def make_run_stats() -> RunStats:
         skipped_by_experience_prefilter=1,
         skipped_by_negative_prefilter=1,
         skipped_existing_vacancies=2,
+        skipped_similar_vacancies=1,
         skipped_by_run_limit=1,
         skipped_low_score=3,
         new_vacancies=5,
         queued_for_analysis=4,
+        local_prescore_vacancies=1,
+        cached_analysis_vacancies=1,
         analyzed_vacancies=4,
         appended_vacancies=1,
         seen_vacancies=4,
@@ -207,11 +217,45 @@ class SheetsTest(unittest.TestCase):
         )
         self.assertEqual(10, values_by_header["Total Fetched"])
         self.assertEqual(2, values_by_header["Tracked/Seen/Duplicate"])
+        self.assertEqual(1, values_by_header["Similar Duplicate Skipped"])
         self.assertEqual(1, values_by_header["Skipped By Run Limit"])
+        self.assertEqual(1, values_by_header["Local Pre-Score"])
+        self.assertEqual(1, values_by_header["Cached Analysis"])
         self.assertEqual(3, values_by_header["Low Score Skipped"])
         self.assertEqual(150, values_by_header["Total Tokens"])
         self.assertEqual(0.0003, values_by_header["Estimated Cost USD"])
         self.assertEqual("OpenAI warning", values_by_header["Errors"])
+
+    def test_analysis_cache_roundtrip(self) -> None:
+        vacancy = make_vacancy()
+        analysis = AnalysisResult(
+            score=7,
+            fit_reason="Good fit",
+            risks="",
+            generated_reply="Hi",
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+            estimated_cost_usd=0.00001,
+            raw_response='{"score":7}',
+        )
+
+        row = analysis_cache_row(
+            vacancy,
+            analysis,
+            ANALYSIS_CACHE_HEADERS,
+            "2026-04-30",
+            "test-model",
+        )
+        worksheet = FakeWorksheet([ANALYSIS_CACHE_HEADERS, row])
+
+        cache = load_analysis_cache(cast(gspread.Worksheet, worksheet), ANALYSIS_CACHE_HEADERS)
+
+        key = analysis_cache_key("test-model", vacancy)
+        self.assertIn(key, cache)
+        self.assertEqual(7, cache[key].score)
+        self.assertEqual("Good fit", cache[key].fit_reason)
+        self.assertEqual('{"score":7}', cache[key].raw_response)
 
 
 if __name__ == "__main__":
