@@ -216,6 +216,13 @@ Optional repository variables:
 - `DOU_RSS_URLS` - defaults to developer-focused DOU category feeds: Python, Front End, Node.js, and React Native.
 - `DJINNI_RSS_URLS` - defaults to developer-focused Djinni category feeds: Python, Fullstack, React.js, Node.js, and React Native.
 - `INDEED_RSS_URLS` - optional Indeed RSS URLs. Indeed may block server-side requests with Cloudflare, so leave empty unless your RSS URL returns XML.
+- `JOBSPY_ENABLED` - defaults to `false`; set `true` to collect Indeed/LinkedIn through optional `python-jobspy`.
+- `JOBSPY_SITES` - defaults to `indeed,linkedin`.
+- `JOBSPY_LOCATIONS` - defaults to `Ukraine,Europe`; each search term is queried for each location.
+- `JOBSPY_PROFILE_TERMS` - defaults to `required-title`; allowed values are `required-title`, `keywords`, and `both`.
+- `JOBSPY_MAX_TERMS` - defaults to `0`, meaning all selected profile terms. Use a small value for smoke tests.
+- `JOBSPY_RESULTS_PER_TERM` - defaults to `5` per site/search term/location.
+- `JOBSPY_COUNTRY_INDEED` - defaults to `Ukraine`; passed to JobSpy for Indeed.
 - `ROBOTA_KEYWORDS` - optional Robota.ua search phrases, separated with commas, semicolons, or new lines. Leave empty to disable Robota.ua.
 - `ROBOTA_PAGES_PER_KEYWORD` - defaults to `1`; each Robota.ua search page returns up to 20 vacancies.
 - `ROBOTA_SORT` - defaults to `BY_DATE`; allowed values are `BY_DATE`, `BY_DISTANCE`, `BY_SALARY`, `BY_RELEVANCE`, `BY_VIEWED`, and `BY_BUSINESS_SCORE`.

@@ -14,6 +14,7 @@ from .filters import (
     negative_prefilter_reason,
     title_prefilter_reason,
 )
+from .jobspy_sources import collect_jobspy_vacancies
 from .local_rules import dedupe_similar_vacancies, local_prescore_vacancy
 from .logging_utils import log_run_start, setup_logging
 from .models import AnalysisResult, Config, OpenAIQuotaError, RunStats, Vacancy
@@ -141,6 +142,18 @@ def source_zero_warning(config: Config, vacancies: list[Vacancy]) -> str:
         missing_sources.append("Djinni")
     if config.indeed_rss_urls and source_counts.get("Indeed", 0) == 0:
         missing_sources.append("Indeed")
+    if (
+        config.jobspy_enabled
+        and "indeed" in config.jobspy_sites
+        and source_counts.get("Indeed", 0) == 0
+    ):
+        missing_sources.append("Indeed")
+    if (
+        config.jobspy_enabled
+        and "linkedin" in config.jobspy_sites
+        and source_counts.get("LinkedIn", 0) == 0
+    ):
+        missing_sources.append("LinkedIn")
     if config.robota_keywords and source_counts.get("Robota.ua", 0) == 0:
         missing_sources.append("Robota.ua")
 
@@ -214,16 +227,18 @@ def run() -> None:
 
     rss_vacancies = collect_rss_vacancies(config)
     robota_vacancies = collect_robota_vacancies(config)
+    jobspy_vacancies = collect_jobspy_vacancies(config)
     email_vacancies = collect_email_alert_vacancies()
-    fetched_vacancies = rss_vacancies + robota_vacancies + email_vacancies
+    fetched_vacancies = rss_vacancies + robota_vacancies + jobspy_vacancies + email_vacancies
     source_counts: dict[str, int] = {}
     for vacancy in fetched_vacancies:
         source_counts[vacancy.source] = source_counts.get(vacancy.source, 0) + 1
     logging.info(
-        "[fetch] DOU=%s | Djinni=%s | Indeed=%s | Robota.ua=%s | total=%s",
+        "[fetch] DOU=%s | Djinni=%s | Indeed=%s | LinkedIn=%s | Robota.ua=%s | total=%s",
         source_counts.get("DOU", 0),
         source_counts.get("Djinni", 0),
         source_counts.get("Indeed", 0),
+        source_counts.get("LinkedIn", 0),
         source_counts.get("Robota.ua", 0),
         len(fetched_vacancies),
     )

@@ -3,3 +3,4 @@ job_radar_profile.json
 venv/
 __pycache__/
 *.py[cod]
+jobspy_probe.py

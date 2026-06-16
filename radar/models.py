@@ -43,6 +43,14 @@ class Config:
     dou_rss_urls: list[str]
     djinni_rss_urls: list[str]
     indeed_rss_urls: list[str] = field(default_factory=list)
+    jobspy_enabled: bool = False
+    jobspy_sites: list[str] = field(default_factory=lambda: ["indeed", "linkedin"])
+    jobspy_locations: list[str] = field(default_factory=lambda: ["Ukraine", "Europe"])
+    jobspy_profile_terms: str = "required-title"
+    jobspy_max_terms: int = 0
+    jobspy_results_per_term: int = 5
+    jobspy_country_indeed: str = "Ukraine"
+    jobspy_verbose: int = 0
     robota_keywords: list[str] = field(default_factory=list)
     robota_cookie: str = ""
     robota_pages_per_keyword: int = 1

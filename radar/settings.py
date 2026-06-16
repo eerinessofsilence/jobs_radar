@@ -23,6 +23,8 @@ ROBOTA_SORT_VALUES = {
     "BY_VIEWED",
     "BY_BUSINESS_SCORE",
 }
+JOBSPY_PROFILE_TERM_VALUES = {"required-title", "keywords", "both"}
+JOBSPY_SITE_VALUES = {"indeed", "linkedin"}
 
 
 def project_root() -> Path:
@@ -85,6 +87,27 @@ def env_choice(name: str, default: str, choices: set[str]) -> str:
         logging.warning("Invalid %s=%r. Using default %s.", name, value, default)
         return default
     return value
+
+
+def env_lower_choice(name: str, default: str, choices: set[str]) -> str:
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    if value not in choices:
+        logging.warning("Invalid %s=%r. Using default %s.", name, value, default)
+        return default
+    return value
+
+
+def env_choice_list(name: str, default: list[str], choices: set[str]) -> list[str]:
+    values = [value.lower() for value in split_env_urls(os.getenv(name), default)]
+    valid_values: list[str] = []
+    for value in values:
+        if value not in choices:
+            logging.warning("Ignoring invalid %s value: %r.", name, value)
+            continue
+        valid_values.append(value)
+    return valid_values or default
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -343,6 +366,19 @@ def load_config() -> Config:
         dou_rss_urls=split_env_urls(os.getenv("DOU_RSS_URLS"), radar.default_dou_rss_urls),
         djinni_rss_urls=split_env_urls(os.getenv("DJINNI_RSS_URLS"), radar.default_djinni_rss_urls),
         indeed_rss_urls=split_env_urls(os.getenv("INDEED_RSS_URLS"), []),
+        jobspy_enabled=env_bool("JOBSPY_ENABLED", False),
+        jobspy_sites=env_choice_list("JOBSPY_SITES", ["indeed", "linkedin"], JOBSPY_SITE_VALUES),
+        jobspy_locations=split_env_urls(os.getenv("JOBSPY_LOCATIONS"), ["Ukraine", "Europe"]),
+        jobspy_profile_terms=env_lower_choice(
+            "JOBSPY_PROFILE_TERMS",
+            "required-title",
+            JOBSPY_PROFILE_TERM_VALUES,
+        ),
+        jobspy_max_terms=env_int("JOBSPY_MAX_TERMS", 0, minimum=0),
+        jobspy_results_per_term=env_int("JOBSPY_RESULTS_PER_TERM", 5, minimum=1),
+        jobspy_country_indeed=os.getenv("JOBSPY_COUNTRY_INDEED", "Ukraine").strip()
+        or "Ukraine",
+        jobspy_verbose=env_int("JOBSPY_VERBOSE", 0, minimum=0),
         robota_keywords=split_env_urls(os.getenv("ROBOTA_KEYWORDS"), []),
         robota_cookie=os.getenv("ROBOTA_COOKIE", "").strip(),
         robota_pages_per_keyword=env_int("ROBOTA_PAGES_PER_KEYWORD", 1, minimum=1),
