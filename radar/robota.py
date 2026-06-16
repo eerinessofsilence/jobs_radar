@@ -102,16 +102,39 @@ def robota_filter(keywords: str) -> dict[str, Any]:
     }
 
 
-def robota_payload(keywords: str, page: int) -> dict[str, Any]:
+def robota_payload(keywords: str, page: int, sort: str = "BY_DATE") -> dict[str, Any]:
     return {
         "operationName": "getPublishedVacanciesList",
         "variables": {
             "pagination": {"count": ROBOTA_PAGE_SIZE, "page": page},
             "filter": robota_filter(keywords),
-            "sort": "BY_BUSINESS_SCORE",
+            "sort": sort,
         },
         "query": PUBLISHED_VACANCIES_QUERY,
     }
+
+
+def unique_search_keywords(values: list[str]) -> list[str]:
+    keywords: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        keyword = compact_text(value)
+        key = keyword.lower()
+        if not keyword or key in seen:
+            continue
+        seen.add(key)
+        keywords.append(keyword)
+    return keywords
+
+
+def robota_search_keywords(config: Config) -> list[str]:
+    if not config.robota_keywords:
+        return []
+
+    keywords = list(config.robota_keywords)
+    if config.robota_include_required_title_keywords:
+        keywords.extend(config.radar.required_title_keywords)
+    return unique_search_keywords(keywords)
 
 
 def robota_salary(value: dict[str, Any] | None) -> str:
@@ -183,20 +206,21 @@ def vacancy_from_robota_item(item: dict[str, Any], keywords: str) -> Vacancy | N
 
 
 def collect_robota_vacancies(config: Config) -> list[Vacancy]:
-    if not config.robota_keywords:
+    search_keywords = robota_search_keywords(config)
+    if not search_keywords:
         return []
 
     vacancies: list[Vacancy] = []
     headers = robota_headers(config)
 
     with retry_session(total=2, backoff_factor=0.5, allowed_methods=("POST",)) as session:
-        for keywords in config.robota_keywords:
+        for keywords in search_keywords:
             for page in range(config.robota_pages_per_keyword):
                 try:
                     response = session.post(
                         ROBOTA_ENDPOINT,
                         headers=headers,
-                        json=robota_payload(keywords, page),
+                        json=robota_payload(keywords, page, config.robota_sort),
                         timeout=30,
                     )
                     if response.status_code >= 400:

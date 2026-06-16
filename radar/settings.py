@@ -15,6 +15,14 @@ DEFAULT_CONFIG_PATH = "job_radar_config.json"
 DEFAULT_PROFILE_CONFIG_PATH = "job_radar_profile.json"
 DEFAULT_PROFILE_EXAMPLE_CONFIG_PATH = "job_radar_profile.example.json"
 DEFAULT_SETTINGS_CONFIG_PATH = "job_radar_settings.json"
+ROBOTA_SORT_VALUES = {
+    "BY_DATE",
+    "BY_DISTANCE",
+    "BY_SALARY",
+    "BY_RELEVANCE",
+    "BY_VIEWED",
+    "BY_BUSINESS_SCORE",
+}
 
 
 def project_root() -> Path:
@@ -67,6 +75,28 @@ def env_float(
         return default
 
     return value
+
+
+def env_choice(name: str, default: str, choices: set[str]) -> str:
+    value = os.getenv(name, "").strip().upper()
+    if not value:
+        return default
+    if value not in choices:
+        logging.warning("Invalid %s=%r. Using default %s.", name, value, default)
+        return default
+    return value
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    logging.warning("Invalid boolean for %s=%r. Using default %s.", name, value, default)
+    return default
 
 
 def require_env(name: str) -> str:
@@ -312,9 +342,15 @@ def load_config() -> Config:
         radar=radar,
         dou_rss_urls=split_env_urls(os.getenv("DOU_RSS_URLS"), radar.default_dou_rss_urls),
         djinni_rss_urls=split_env_urls(os.getenv("DJINNI_RSS_URLS"), radar.default_djinni_rss_urls),
+        indeed_rss_urls=split_env_urls(os.getenv("INDEED_RSS_URLS"), []),
         robota_keywords=split_env_urls(os.getenv("ROBOTA_KEYWORDS"), []),
         robota_cookie=os.getenv("ROBOTA_COOKIE", "").strip(),
         robota_pages_per_keyword=env_int("ROBOTA_PAGES_PER_KEYWORD", 1, minimum=1),
+        robota_sort=env_choice("ROBOTA_SORT", "BY_DATE", ROBOTA_SORT_VALUES),
+        robota_include_required_title_keywords=env_bool(
+            "ROBOTA_INCLUDE_REQUIRED_TITLE_KEYWORDS",
+            True,
+        ),
         min_score=min_score,
         max_jobs_per_run=env_int("MAX_JOBS_PER_RUN", 20, minimum=1),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",

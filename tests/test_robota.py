@@ -1,6 +1,52 @@
 import unittest
 
-from radar.robota import robota_payload, vacancy_from_robota_item
+from radar.models import Config, RadarSettings
+from radar.robota import robota_payload, robota_search_keywords, vacancy_from_robota_item
+
+
+def make_config(
+    robota_keywords: list[str],
+    required_title_keywords: list[str],
+    include_required: bool = True,
+) -> Config:
+    radar = RadarSettings(
+        candidate_profile="",
+        target_experience_level="",
+        candidate_years="",
+        preferred_required_years="",
+        max_required_years=None,
+        experience_guidance="",
+        required_title_keywords=required_title_keywords,
+        keywords=[],
+        negative_prefilter_enabled=False,
+        negative_title_keywords=[],
+        negative_description_phrases=[],
+        sheet_headers=["URL"],
+        found_date_timezone="UTC",
+        found_date_format="%Y-%m-%d",
+        default_dou_rss_urls=[],
+        default_djinni_rss_urls=[],
+        score_min=1,
+        score_max=10,
+        description_max_chars=3000,
+        scoring_guidance="",
+        scoring_rubric="",
+        generated_reply_instruction="",
+        openai_system_prompt="",
+        row_defaults={},
+    )
+    return Config(
+        openai_api_key="openai-key",
+        google_sheet_id="sheet-id",
+        google_service_account_json="{}",
+        telegram_bot_token="telegram-token",
+        telegram_chat_id="chat-id",
+        radar=radar,
+        dou_rss_urls=[],
+        djinni_rss_urls=[],
+        robota_keywords=robota_keywords,
+        robota_include_required_title_keywords=include_required,
+    )
 
 
 class RobotaTest(unittest.TestCase):
@@ -38,10 +84,37 @@ class RobotaTest(unittest.TestCase):
         self.assertEqual("getPublishedVacanciesList", payload["operationName"])
         self.assertEqual(2, payload["variables"]["pagination"]["page"])
         self.assertEqual(20, payload["variables"]["pagination"]["count"])
+        self.assertEqual("BY_DATE", payload["variables"]["sort"])
         self.assertEqual(
             "junior python developer",
             payload["variables"]["filter"]["keywords"],
         )
+
+    def test_robota_payload_allows_sort_override(self) -> None:
+        payload = robota_payload("python developer", 0, "BY_BUSINESS_SCORE")
+
+        self.assertEqual("BY_BUSINESS_SCORE", payload["variables"]["sort"])
+
+    def test_robota_search_keywords_include_required_title_keywords(self) -> None:
+        config = make_config(
+            ["python developer", "Python Developer"],
+            ["Backend Developer", "Python Developer"],
+        )
+
+        self.assertEqual(
+            ["python developer", "Backend Developer"],
+            robota_search_keywords(config),
+        )
+
+    def test_robota_search_keywords_stays_disabled_without_manual_keywords(self) -> None:
+        config = make_config([], ["Backend Developer"])
+
+        self.assertEqual([], robota_search_keywords(config))
+
+    def test_robota_search_keywords_can_skip_required_title_keywords(self) -> None:
+        config = make_config(["python developer"], ["Backend Developer"], include_required=False)
+
+        self.assertEqual(["python developer"], robota_search_keywords(config))
 
 
 if __name__ == "__main__":

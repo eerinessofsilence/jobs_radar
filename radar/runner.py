@@ -139,6 +139,8 @@ def source_zero_warning(config: Config, vacancies: list[Vacancy]) -> str:
         missing_sources.append("DOU")
     if config.djinni_rss_urls and source_counts.get("Djinni", 0) == 0:
         missing_sources.append("Djinni")
+    if config.indeed_rss_urls and source_counts.get("Indeed", 0) == 0:
+        missing_sources.append("Indeed")
     if config.robota_keywords and source_counts.get("Robota.ua", 0) == 0:
         missing_sources.append("Robota.ua")
 
@@ -218,9 +220,10 @@ def run() -> None:
     for vacancy in fetched_vacancies:
         source_counts[vacancy.source] = source_counts.get(vacancy.source, 0) + 1
     logging.info(
-        "[fetch] DOU=%s | Djinni=%s | Robota.ua=%s | total=%s",
+        "[fetch] DOU=%s | Djinni=%s | Indeed=%s | Robota.ua=%s | total=%s",
         source_counts.get("DOU", 0),
         source_counts.get("Djinni", 0),
+        source_counts.get("Indeed", 0),
         source_counts.get("Robota.ua", 0),
         len(fetched_vacancies),
     )

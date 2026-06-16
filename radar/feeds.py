@@ -47,7 +47,8 @@ def fetch_rss_vacancies(source: str, urls: list[str]) -> list[Vacancy]:
 def collect_rss_vacancies(config: Config) -> list[Vacancy]:
     dou_vacancies = fetch_rss_vacancies("DOU", config.dou_rss_urls)
     djinni_vacancies = fetch_rss_vacancies("Djinni", config.djinni_rss_urls)
-    return dou_vacancies + djinni_vacancies
+    indeed_vacancies = fetch_rss_vacancies("Indeed", config.indeed_rss_urls)
+    return dou_vacancies + djinni_vacancies + indeed_vacancies
 
 
 def collect_email_alert_vacancies() -> list[Vacancy]:

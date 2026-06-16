@@ -118,7 +118,7 @@ def log_run_start(config: Config) -> None:
         config.radar.score_max,
         config.min_score,
         config.max_jobs_per_run,
-        len(config.dou_rss_urls) + len(config.djinni_rss_urls),
+        len(config.dou_rss_urls) + len(config.djinni_rss_urls) + len(config.indeed_rss_urls),
         len(config.robota_keywords),
         config.openai_timeout_seconds,
         config.openai_max_retries,
