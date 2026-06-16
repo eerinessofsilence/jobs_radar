@@ -42,6 +42,9 @@ class Config:
     radar: RadarSettings
     dou_rss_urls: list[str]
     djinni_rss_urls: list[str]
+    robota_keywords: list[str] = field(default_factory=list)
+    robota_cookie: str = ""
+    robota_pages_per_keyword: int = 1
     min_score: int = 0
     max_jobs_per_run: int = 20
     openai_model: str = "gpt-4o-mini"

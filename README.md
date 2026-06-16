@@ -215,6 +215,9 @@ Optional repository variables:
 - `JOB_RADAR_CONFIG` - optional legacy single-file config override.
 - `DOU_RSS_URLS` - defaults to developer-focused DOU category feeds: Python, Front End, Node.js, and React Native.
 - `DJINNI_RSS_URLS` - defaults to developer-focused Djinni category feeds: Python, Fullstack, React.js, Node.js, and React Native.
+- `ROBOTA_KEYWORDS` - optional Robota.ua search phrases, separated with commas, semicolons, or new lines. Leave empty to disable Robota.ua.
+- `ROBOTA_PAGES_PER_KEYWORD` - defaults to `1`; each Robota.ua search page returns up to 20 vacancies.
+- `ROBOTA_COOKIE` - optional browser cookie header for Robota.ua if Cloudflare blocks server-side requests. Do not commit this value.
 - `MIN_SCORE` - defaults to `5`; only vacancies with this score or higher are appended. Telegram groups scored vacancies into `Strong`, `Maybe`, and `Skipped notable`.
 - `MAX_JOBS_PER_RUN` - defaults to `20`; limits OpenAI analysis per run.
 - `OPENAI_MODEL` - defaults to `gpt-4o-mini`.

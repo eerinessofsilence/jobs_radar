@@ -47,12 +47,6 @@ def fetch_rss_vacancies(source: str, urls: list[str]) -> list[Vacancy]:
 def collect_rss_vacancies(config: Config) -> list[Vacancy]:
     dou_vacancies = fetch_rss_vacancies("DOU", config.dou_rss_urls)
     djinni_vacancies = fetch_rss_vacancies("Djinni", config.djinni_rss_urls)
-    logging.info(
-        "[fetch] DOU=%s | Djinni=%s | total=%s",
-        len(dou_vacancies),
-        len(djinni_vacancies),
-        len(dou_vacancies) + len(djinni_vacancies),
-    )
     return dou_vacancies + djinni_vacancies
 
 

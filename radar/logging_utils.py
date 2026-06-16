@@ -111,7 +111,7 @@ def setup_logging() -> None:
 
 def log_run_start(config: Config) -> None:
     logging.info(
-        "[start] model=%s | score=%s-%s | min=%s | max_jobs=%s | feeds=%s | "
+        "[start] model=%s | score=%s-%s | min=%s | max_jobs=%s | feeds=%s | robota=%s | "
         "openai_timeout=%ss | openai_retries=%s | max_completion=%s",
         config.openai_model,
         config.radar.score_min,
@@ -119,6 +119,7 @@ def log_run_start(config: Config) -> None:
         config.min_score,
         config.max_jobs_per_run,
         len(config.dou_rss_urls) + len(config.djinni_rss_urls),
+        len(config.robota_keywords),
         config.openai_timeout_seconds,
         config.openai_max_retries,
         config.openai_max_completion_tokens,
