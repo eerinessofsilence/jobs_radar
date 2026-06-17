@@ -4,6 +4,7 @@ import re
 
 from .http_utils import retry_session
 from .models import AnalysisResult, RunStats, Vacancy
+from .tech_stack import TechStat, top_tech_stack_lines
 from .text import compact_text, truncate_text
 
 
@@ -112,16 +113,42 @@ def append_vacancy_group(
         lines.append(vacancy.url)
 
 
-def build_no_new_message(stats: RunStats, sheet_url: str = "", warning: str = "") -> str:
-    lines = [
-        "Job radar: no new matching vacancies found.",
-        *build_context_lines(stats),
-    ]
+def append_tech_stack_top(
+    lines: list[str],
+    tech_stats: list[TechStat],
+    limit: int = 20,
+) -> None:
+    top_lines = top_tech_stack_lines(tech_stats, limit=limit)
+    if not top_lines:
+        return
+
+    lines.append("")
+    lines.append("Tech stack top")
+    lines.extend(top_lines)
+
+
+def append_full_stats_link(lines: list[str], sheet_url: str) -> None:
+    if not sheet_url:
+        return
+
+    lines.append("")
+    lines.append(f"Full tech stack DB: {sheet_url} (TechStats / TechDB)")
+
+
+def build_no_new_message(
+    stats: RunStats,
+    sheet_url: str = "",
+    warning: str = "",
+    tech_stats: list[TechStat] | None = None,
+) -> str:
+    lines = ["Job radar: no new matching vacancies found."]
     if sheet_url:
         lines.append(f"Sheet: {sheet_url}")
+    append_tech_stack_top(lines, tech_stats or [])
     if warning:
         lines.append("")
         lines.append(f"Warning: {warning}")
+    append_full_stats_link(lines, sheet_url)
     return "\n".join(lines)
 
 
@@ -131,6 +158,7 @@ def build_summary_message(
     min_score: int,
     sheet_url: str = "",
     warning: str = "",
+    tech_stats: list[TechStat] | None = None,
 ) -> str:
     scored = [(vacancy, analysis) for vacancy, analysis in analyzed if analysis.score > 0]
     sorted_scored = sorted(scored, key=lambda item: item[1].score, reverse=True)
@@ -152,12 +180,12 @@ def build_summary_message(
         if analysis.score < min_score and not has_interesting_work_format(vacancy)
     ][:5]
 
-    lines = ["Job radar summary", *build_context_lines(stats)]
+    lines = ["Job radar summary"]
 
-    if min_score > 0:
-        lines.append(f"Minimum score to append/list: {min_score}")
     if sheet_url:
         lines.append(f"Sheet: {sheet_url}")
+
+    append_tech_stack_top(lines, tech_stats or [])
 
     if warning:
         lines.append("")
@@ -171,4 +199,5 @@ def build_summary_message(
         lines.append("")
         lines.append("No scored vacancies to list.")
 
+    append_full_stats_link(lines, sheet_url)
     return "\n".join(lines)

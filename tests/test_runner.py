@@ -91,6 +91,12 @@ class RunnerOrchestrationTest(unittest.TestCase):
             analysis_cache_worksheet=object(),
             analysis_cache_headers=["URL", "Score"],
             analysis_cache={},
+            tech_db_worksheet=object(),
+            tech_db_headers=["URL", "Category", "Technology"],
+            tech_db_records=[],
+            tech_db_keys=set(),
+            tech_stats_worksheet=object(),
+            tech_stats_headers=["Run Date", "Technology"],
         )
 
         with (
@@ -108,6 +114,8 @@ class RunnerOrchestrationTest(unittest.TestCase):
             patch.object(runner, "append_analyzed_vacancies", return_value=0) as append_main,
             patch.object(runner, "append_seen_vacancies", return_value=1) as append_seen,
             patch.object(runner, "append_analysis_cache_rows", return_value=0),
+            patch.object(runner, "append_tech_db_records", return_value=(0, [])),
+            patch.object(runner, "append_tech_stats", return_value=2),
             patch.object(runner, "append_run_summary", return_value=1) as append_run,
             patch.object(runner, "send_telegram_message") as send_message,
         ):
@@ -151,6 +159,12 @@ class RunnerOrchestrationTest(unittest.TestCase):
             analysis_cache_worksheet=object(),
             analysis_cache_headers=["URL", "Score"],
             analysis_cache={(config.openai_model, vacancy.url): cached_analysis},
+            tech_db_worksheet=object(),
+            tech_db_headers=["URL", "Category", "Technology"],
+            tech_db_records=[],
+            tech_db_keys=set(),
+            tech_stats_worksheet=object(),
+            tech_stats_headers=["Run Date", "Technology"],
         )
 
         with (
@@ -164,6 +178,8 @@ class RunnerOrchestrationTest(unittest.TestCase):
             patch.object(runner, "append_analyzed_vacancies", return_value=1),
             patch.object(runner, "append_seen_vacancies", return_value=1),
             patch.object(runner, "append_analysis_cache_rows", return_value=0),
+            patch.object(runner, "append_tech_db_records", return_value=(0, [])),
+            patch.object(runner, "append_tech_stats", return_value=1),
             patch.object(runner, "append_run_summary", return_value=1) as append_run,
             patch.object(runner, "send_telegram_message"),
         ):
@@ -192,6 +208,12 @@ class RunnerOrchestrationTest(unittest.TestCase):
             analysis_cache_worksheet=object(),
             analysis_cache_headers=["URL", "Score"],
             analysis_cache={},
+            tech_db_worksheet=object(),
+            tech_db_headers=["URL", "Category", "Technology"],
+            tech_db_records=[],
+            tech_db_keys=set(),
+            tech_stats_worksheet=object(),
+            tech_stats_headers=["Run Date", "Technology"],
         )
 
         with (
@@ -201,6 +223,8 @@ class RunnerOrchestrationTest(unittest.TestCase):
             patch.object(runner, "open_sheet", return_value=sheets),
             patch.object(runner, "collect_rss_vacancies", return_value=[djinni_vacancy]),
             patch.object(runner, "collect_email_alert_vacancies", return_value=[]),
+            patch.object(runner, "append_tech_db_records", return_value=(0, [])),
+            patch.object(runner, "append_tech_stats", return_value=1),
             patch.object(runner, "append_run_summary", return_value=1) as append_run,
             patch.object(runner, "send_telegram_message"),
         ):

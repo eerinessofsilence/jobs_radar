@@ -11,6 +11,7 @@ JOBSPY_SITE_SOURCES = {
     "indeed": "Indeed",
     "linkedin": "LinkedIn",
 }
+LINKEDIN_UNSUPPORTED_LOCATION_COUNTRIES = {"iceland"}
 
 
 def unique_terms(values: list[str]) -> list[str]:
@@ -147,6 +148,17 @@ def scrape_jobspy_site(
     return vacancies
 
 
+def is_linkedin_unsupported_country_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "invalid country string" in message
+
+
+def should_skip_jobspy_site_location(site: str, location: str) -> bool:
+    if site != "linkedin":
+        return False
+    return location.strip().lower() in LINKEDIN_UNSUPPORTED_LOCATION_COUNTRIES
+
+
 def collect_jobspy_vacancies(config: Config) -> list[Vacancy]:
     if not config.jobspy_enabled:
         return []
@@ -160,10 +172,26 @@ def collect_jobspy_vacancies(config: Config) -> list[Vacancy]:
     for term in terms:
         for location in config.jobspy_locations:
             for site in config.jobspy_sites:
+                if should_skip_jobspy_site_location(site, location):
+                    logging.warning(
+                        "[fetch] JobSpy skipped %s | %r | %s: LinkedIn does not support this country.",
+                        site,
+                        term,
+                        location,
+                    )
+                    continue
                 logging.info("[fetch] JobSpy %s | %r | %s", site, term, location)
                 try:
                     site_vacancies = scrape_jobspy_site(site, term, location, config)
                 except Exception as exc:
+                    if site == "linkedin" and is_linkedin_unsupported_country_error(exc):
+                        logging.warning(
+                            "[fetch] JobSpy skipped linkedin | %r | %s: unsupported country in LinkedIn result (%s).",
+                            term,
+                            location,
+                            exc,
+                        )
+                        continue
                     logging.exception(
                         "[fetch] JobSpy failed for %s | %r | %s: %s",
                         site,

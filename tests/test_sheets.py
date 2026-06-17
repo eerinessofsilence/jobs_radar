@@ -7,15 +7,22 @@ from radar.sheets import (
     ANALYSIS_CACHE_HEADERS,
     RUNS_SHEET_HEADERS,
     SEEN_SHEET_HEADERS,
+    TECH_DB_HEADERS,
+    TECH_STATS_HEADERS,
     analysis_cache_key,
     analysis_cache_row,
+    append_tech_db_records,
+    append_tech_stats,
     append_seen_vacancies,
     ensure_sheet_headers,
     load_analysis_cache,
+    load_tech_db_records,
     load_urls_from_headers,
     run_summary_row,
     seen_row_for_vacancy,
+    tech_stats_row,
 )
+from radar.tech_stack import TechMentionRecord, TechStat
 
 
 class FakeWorksheet:
@@ -26,6 +33,7 @@ class FakeWorksheet:
         self.updated_values: list[list[str]] = []
         self.updated_range = ""
         self.appended_rows: list[list[str]] = []
+        self.cleared = False
 
     def row_values(self, row: int) -> list[str]:
         return self.rows[row - 1] if len(self.rows) >= row else []
@@ -34,12 +42,20 @@ class FakeWorksheet:
         index = column - 1
         return [row[index] for row in self.rows if len(row) > index]
 
-    def update(self, values: list[list[str]], range_name: str) -> None:
+    def update(
+        self,
+        values: list[list[str]],
+        range_name: str,
+        value_input_option: object | None = None,
+    ) -> None:
         self.updated_values = values
         self.updated_range = range_name
 
     def append_rows(self, rows: list[list[str]], value_input_option: object) -> None:
         self.appended_rows = rows
+
+    def clear(self) -> None:
+        self.cleared = True
 
     def get_all_values(self) -> list[list[str]]:
         return self.rows
@@ -260,6 +276,104 @@ class SheetsTest(unittest.TestCase):
         self.assertEqual(7, cache[key].score)
         self.assertEqual("Good fit", cache[key].fit_reason)
         self.assertEqual('{"score":7}', cache[key].raw_response)
+
+    def test_tech_stats_row(self) -> None:
+        stat = TechStat(
+            category="Backend Frameworks",
+            technology="FastAPI",
+            count=2,
+            total_vacancies=4,
+            sources={"Djinni", "Robota.ua"},
+            top_titles=["Python Developer", "Backend Developer"],
+        )
+
+        row = tech_stats_row(stat, TECH_STATS_HEADERS, "2026-04-30")
+        values_by_header = dict(zip(TECH_STATS_HEADERS, row, strict=True))
+
+        self.assertEqual("2026-04-30", values_by_header["Run Date"])
+        self.assertEqual("Backend Frameworks", values_by_header["Category"])
+        self.assertEqual("FastAPI", values_by_header["Technology"])
+        self.assertEqual(2, values_by_header["Count"])
+        self.assertEqual(4, values_by_header["Total Vacancies"])
+        self.assertEqual(50.0, values_by_header["Percent"])
+        self.assertEqual("Djinni, Robota.ua", values_by_header["Sources"])
+        self.assertEqual(
+            "Python Developer | Backend Developer",
+            values_by_header["Top Titles"],
+        )
+
+    def test_load_tech_db_records(self) -> None:
+        worksheet = FakeWorksheet(
+            [
+                TECH_DB_HEADERS,
+                [
+                    "2026-04-30",
+                    "Djinni",
+                    "https://example.com/job",
+                    "Python Developer",
+                    "Acme",
+                    "Languages",
+                    "Python",
+                ],
+            ]
+        )
+
+        records = load_tech_db_records(cast(gspread.Worksheet, worksheet), TECH_DB_HEADERS)
+
+        self.assertEqual(1, len(records))
+        self.assertEqual("Python", records[0].technology)
+        self.assertEqual("Languages", records[0].category)
+
+    def test_append_tech_db_records_dedupes_existing_keys(self) -> None:
+        worksheet = FakeWorksheet([TECH_DB_HEADERS])
+        vacancy = make_vacancy()
+        vacancy.description = "Python and Django."
+
+        count, records = append_tech_db_records(
+            cast(gspread.Worksheet, worksheet),
+            TECH_DB_HEADERS,
+            set(),
+            [vacancy, vacancy],
+            make_radar(),
+        )
+
+        self.assertEqual(2, count)
+        self.assertEqual(2, len(records))
+        self.assertEqual(2, len(worksheet.appended_rows))
+        self.assertEqual("Python", worksheet.appended_rows[0][6])
+
+    def test_append_tech_stats_replaces_sheet_values(self) -> None:
+        worksheet = FakeWorksheet(
+            [
+                TECH_STATS_HEADERS,
+                ["old", "Languages", "Python", "1", "1", "100", "Old", "Old"],
+            ]
+        )
+        records = [
+            TechMentionRecord(
+                found_date="2026-04-30",
+                source="Djinni",
+                url="https://example.com/job",
+                title="Python Developer",
+                company="Acme",
+                category="Languages",
+                technology="Python",
+            )
+        ]
+
+        count = append_tech_stats(
+            cast(gspread.Worksheet, worksheet),
+            TECH_STATS_HEADERS,
+            records,
+            make_radar(),
+        )
+
+        self.assertEqual(1, count)
+        self.assertTrue(worksheet.cleared)
+        self.assertEqual("A1:H2", worksheet.updated_range)
+        self.assertEqual(TECH_STATS_HEADERS, worksheet.updated_values[0])
+        self.assertEqual("Python", worksheet.updated_values[1][2])
+        self.assertEqual([], worksheet.appended_rows)
 
 
 if __name__ == "__main__":

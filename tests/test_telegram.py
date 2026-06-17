@@ -1,7 +1,8 @@
 import unittest
 
 from radar.models import AnalysisResult, RunStats, Vacancy
-from radar.telegram import build_summary_message, telegram_chunks
+from radar.tech_stack import TechStat
+from radar.telegram import build_no_new_message, build_summary_message, telegram_chunks
 
 
 def make_vacancy(
@@ -33,7 +34,7 @@ class TelegramTest(unittest.TestCase):
 
         self.assertEqual(["abcd", "efgh", "ij"], chunks)
 
-    def test_summary_includes_operational_context_and_sheet_link(self) -> None:
+    def test_summary_keeps_operational_noise_out_of_telegram(self) -> None:
         stats = RunStats(
             total_fetched=10,
             missing_company=2,
@@ -60,12 +61,13 @@ class TelegramTest(unittest.TestCase):
             sheet_url="https://docs.google.com/spreadsheets/d/sheet-id/edit",
         )
 
-        self.assertIn("Tracked/seen/duplicate: 2", message)
-        self.assertIn("Missing company: 2", message)
-        self.assertIn("Missing salary: 6", message)
-        self.assertIn("Skipped by run limit: 1", message)
-        self.assertIn("Low-score skipped: 3", message)
-        self.assertIn("Token usage: 150 total (100 input, 50 output), cost=$0.000300", message)
+        self.assertNotIn("Tracked/seen/duplicate", message)
+        self.assertNotIn("Missing company", message)
+        self.assertNotIn("Missing salary", message)
+        self.assertNotIn("Skipped by run limit", message)
+        self.assertNotIn("Low-score skipped", message)
+        self.assertNotIn("Token usage", message)
+        self.assertNotIn("Minimum score", message)
         self.assertIn("Sheet: https://docs.google.com/spreadsheets/d/sheet-id/edit", message)
 
     def test_summary_groups_scored_vacancies(self) -> None:
@@ -97,6 +99,49 @@ class TelegramTest(unittest.TestCase):
         self.assertIn(
             "Skipped notable\n3 | Office Python Developer | Acme | $1000 | Office",
             message,
+        )
+
+    def test_summary_includes_compact_tech_stack_top(self) -> None:
+        stats = RunStats(total_fetched=3, analyzed_vacancies=1)
+        tech_stats = [
+            TechStat(
+                category="Languages",
+                technology=f"Tech {index}",
+                count=30 - index,
+                total_vacancies=30,
+            )
+            for index in range(25)
+        ]
+
+        message = build_summary_message(
+            stats,
+            analyzed=[],
+            min_score=5,
+            sheet_url="https://docs.google.com/spreadsheets/d/sheet-id/edit",
+            tech_stats=tech_stats,
+        )
+
+        self.assertIn("Tech stack top\nTech 0: 30/30", message)
+        self.assertIn("Tech 19: 11/30", message)
+        self.assertNotIn("Tech 20: 10/30", message)
+        self.assertTrue(
+            message.endswith(
+                "Full tech stack DB: https://docs.google.com/spreadsheets/d/sheet-id/edit "
+                "(TechStats / TechDB)"
+            )
+        )
+
+    def test_no_new_message_includes_tech_stack_db_link_at_end(self) -> None:
+        message = build_no_new_message(
+            RunStats(),
+            sheet_url="https://docs.google.com/spreadsheets/d/sheet-id/edit",
+        )
+
+        self.assertTrue(
+            message.endswith(
+                "Full tech stack DB: https://docs.google.com/spreadsheets/d/sheet-id/edit "
+                "(TechStats / TechDB)"
+            )
         )
 
 

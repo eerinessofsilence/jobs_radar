@@ -14,12 +14,21 @@ from gspread.exceptions import WorksheetNotFound
 from gspread.utils import ValueInputOption
 
 from .models import AnalysisResult, Config, RadarSettings, RunStats, Vacancy
+from .tech_stack import (
+    TechMentionRecord,
+    TechStat,
+    build_tech_stats_from_records,
+    tech_record_key,
+    tech_records_for_vacancies,
+)
 from .urls import normalize_url
 
 SHEET_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SEEN_WORKSHEET_TITLE = "Seen"
 RUNS_WORKSHEET_TITLE = "Runs"
 ANALYSIS_CACHE_WORKSHEET_TITLE = "AnalysisCache"
+TECH_STATS_WORKSHEET_TITLE = "TechStats"
+TECH_DB_WORKSHEET_TITLE = "TechDB"
 SEEN_SHEET_HEADERS = [
     "Analyzed Date",
     "Source",
@@ -76,6 +85,25 @@ ANALYSIS_CACHE_HEADERS = [
     "Estimated Cost USD",
     "Raw Response",
 ]
+TECH_STATS_HEADERS = [
+    "Run Date",
+    "Category",
+    "Technology",
+    "Count",
+    "Total Vacancies",
+    "Percent",
+    "Sources",
+    "Top Titles",
+]
+TECH_DB_HEADERS = [
+    "Found Date",
+    "Source",
+    "URL",
+    "Title",
+    "Company",
+    "Category",
+    "Technology",
+]
 
 
 @dataclass(slots=True)
@@ -91,6 +119,12 @@ class OpenedSheets:
     analysis_cache_worksheet: gspread.Worksheet
     analysis_cache_headers: list[str]
     analysis_cache: dict[tuple[str, str], AnalysisResult]
+    tech_db_worksheet: gspread.Worksheet
+    tech_db_headers: list[str]
+    tech_db_records: list[TechMentionRecord]
+    tech_db_keys: set[tuple[str, str, str]]
+    tech_stats_worksheet: gspread.Worksheet
+    tech_stats_headers: list[str]
 
 
 def parse_service_account_info(raw_json: str) -> dict[str, Any]:
@@ -185,6 +219,24 @@ def get_or_create_analysis_cache_worksheet(spreadsheet: gspread.Spreadsheet) -> 
     )
 
 
+def get_or_create_tech_stats_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Worksheet:
+    return get_or_create_worksheet(
+        spreadsheet,
+        TECH_STATS_WORKSHEET_TITLE,
+        len(TECH_STATS_HEADERS),
+        "technology stack statistics",
+    )
+
+
+def get_or_create_tech_db_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Worksheet:
+    return get_or_create_worksheet(
+        spreadsheet,
+        TECH_DB_WORKSHEET_TITLE,
+        len(TECH_DB_HEADERS),
+        "per-vacancy technology mentions",
+    )
+
+
 def get_or_create_worksheet(
     spreadsheet: gspread.Spreadsheet,
     title: str,
@@ -246,6 +298,12 @@ def open_sheet(config: Config) -> OpenedSheets:
         ANALYSIS_CACHE_HEADERS,
     )
     analysis_cache = load_analysis_cache(analysis_cache_worksheet, analysis_cache_headers)
+    tech_db_worksheet = get_or_create_tech_db_worksheet(spreadsheet)
+    tech_db_headers = ensure_sheet_headers(tech_db_worksheet, TECH_DB_HEADERS)
+    tech_db_records = load_tech_db_records(tech_db_worksheet, tech_db_headers)
+    tech_db_keys = {tech_record_key(record) for record in tech_db_records}
+    tech_stats_worksheet = get_or_create_tech_stats_worksheet(spreadsheet)
+    tech_stats_headers = ensure_sheet_headers(tech_stats_worksheet, TECH_STATS_HEADERS)
     return OpenedSheets(
         worksheet=worksheet,
         headers=headers,
@@ -258,6 +316,12 @@ def open_sheet(config: Config) -> OpenedSheets:
         analysis_cache_worksheet=analysis_cache_worksheet,
         analysis_cache_headers=analysis_cache_headers,
         analysis_cache=analysis_cache,
+        tech_db_worksheet=tech_db_worksheet,
+        tech_db_headers=tech_db_headers,
+        tech_db_records=tech_db_records,
+        tech_db_keys=tech_db_keys,
+        tech_stats_worksheet=tech_stats_worksheet,
+        tech_stats_headers=tech_stats_headers,
     )
 
 
@@ -496,6 +560,127 @@ def append_analysis_cache_rows(
         for vacancy, analysis in cacheable
     ]
     worksheet.append_rows(rows, value_input_option=ValueInputOption.raw)
+    return len(rows)
+
+
+def tech_db_record_from_values(values: dict[str, Any]) -> TechMentionRecord | None:
+    url = str(values.get("URL", "")).strip()
+    category = str(values.get("Category", "")).strip()
+    technology = str(values.get("Technology", "")).strip()
+    if not url or not category or not technology:
+        return None
+    return TechMentionRecord(
+        found_date=str(values.get("Found Date", "")),
+        source=str(values.get("Source", "")),
+        url=url,
+        title=str(values.get("Title", "")),
+        company=str(values.get("Company", "")),
+        category=category,
+        technology=technology,
+    )
+
+
+def load_tech_db_records(
+    worksheet: gspread.Worksheet,
+    headers: list[str],
+) -> list[TechMentionRecord]:
+    if "URL" not in headers or "Category" not in headers or "Technology" not in headers:
+        return []
+
+    records: list[TechMentionRecord] = []
+    rows = worksheet.get_all_values()
+    for row in rows[1:]:
+        values = {
+            header: row[index] if index < len(row) else "" for index, header in enumerate(headers)
+        }
+        record = tech_db_record_from_values(values)
+        if record:
+            records.append(record)
+    return records
+
+
+def tech_db_row(record: TechMentionRecord, headers: list[str]) -> list[Any]:
+    values_by_header: dict[str, Any] = {
+        "Found Date": record.found_date,
+        "Source": record.source,
+        "URL": record.url,
+        "Title": record.title,
+        "Company": record.company,
+        "Category": record.category,
+        "Technology": record.technology,
+    }
+    return [values_by_header.get(header, "") for header in headers]
+
+
+def append_tech_db_records(
+    worksheet: gspread.Worksheet,
+    headers: list[str],
+    existing_keys: set[tuple[str, str, str]],
+    vacancies: list[Vacancy],
+    radar: RadarSettings,
+) -> tuple[int, list[TechMentionRecord]]:
+    if not vacancies:
+        return 0, []
+
+    found_date = format_found_date(radar)
+    records = tech_records_for_vacancies(vacancies, found_date)
+    new_records: list[TechMentionRecord] = []
+    for record in records:
+        key = tech_record_key(record)
+        if key in existing_keys:
+            continue
+        existing_keys.add(key)
+        new_records.append(record)
+
+    if not new_records:
+        return 0, []
+
+    rows = [tech_db_row(record, headers) for record in new_records]
+    worksheet.append_rows(rows, value_input_option=ValueInputOption.raw)
+    return len(rows), new_records
+
+
+def tech_stats_row(stat: TechStat, headers: list[str], run_date: str) -> list[Any]:
+    values_by_header: dict[str, Any] = {
+        "Run Date": run_date,
+        "Category": stat.category,
+        "Technology": stat.technology,
+        "Count": stat.count,
+        "Total Vacancies": stat.total_vacancies,
+        "Percent": round(stat.percent, 1),
+        "Sources": ", ".join(sorted(stat.sources)),
+        "Top Titles": " | ".join(stat.top_titles),
+    }
+    return [values_by_header.get(header, "") for header in headers]
+
+
+def append_tech_stats(
+    worksheet: gspread.Worksheet,
+    headers: list[str],
+    records: list[TechMentionRecord],
+    radar: RadarSettings,
+) -> int:
+    worksheet.clear()
+    if not records:
+        end_column = column_letter(len(headers))
+        worksheet.update(values=[headers], range_name=f"A1:{end_column}1")
+        return 0
+
+    stats = build_tech_stats_from_records(records)
+    if not stats:
+        end_column = column_letter(len(headers))
+        worksheet.update(values=[headers], range_name=f"A1:{end_column}1")
+        return 0
+
+    run_date = format_found_date(radar)
+    rows = [tech_stats_row(stat, headers, run_date) for stat in stats]
+    end_column = column_letter(len(headers))
+    end_row = len(rows) + 1
+    worksheet.update(
+        values=[headers, *rows],
+        range_name=f"A1:{end_column}{end_row}",
+        value_input_option=ValueInputOption.raw,
+    )
     return len(rows)
 
 

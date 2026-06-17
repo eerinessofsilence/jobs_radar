@@ -28,11 +28,14 @@ from .sheets import (
     append_analyzed_vacancies,
     append_run_summary,
     append_seen_vacancies,
+    append_tech_db_records,
+    append_tech_stats,
     google_sheet_url,
     open_sheet,
 )
 from .telegram import build_no_new_message, build_summary_message, send_telegram_message
 from .text import keywords_label, truncate_text, vacancy_label
+from .tech_stack import TechStat, build_tech_stats_from_records
 
 
 def unique_new_vacancies(vacancies: list[Vacancy], existing_urls: set[str]) -> list[Vacancy]:
@@ -247,6 +250,31 @@ def run() -> None:
     stats.missing_company = sum(1 for vacancy in fetched_vacancies if not vacancy.company)
     stats.missing_salary = sum(1 for vacancy in fetched_vacancies if not vacancy.salary)
     warning = source_zero_warning(config, fetched_vacancies)
+    tech_stats: list[TechStat] = []
+    try:
+        appended_tech_db_rows, new_tech_records = append_tech_db_records(
+            sheets.tech_db_worksheet,
+            sheets.tech_db_headers,
+            sheets.tech_db_keys,
+            fetched_vacancies,
+            config.radar,
+        )
+        all_tech_records = sheets.tech_db_records + new_tech_records
+        tech_stats = build_tech_stats_from_records(all_tech_records)
+        appended_tech_rows = append_tech_stats(
+            sheets.tech_stats_worksheet,
+            sheets.tech_stats_headers,
+            all_tech_records,
+            config.radar,
+        )
+        logging.info(
+            "[tech] db rows=%s | stats rows=%s",
+            appended_tech_db_rows,
+            appended_tech_rows,
+        )
+    except Exception as exc:
+        logging.exception("[sheet] Failed to append tech stack stats.")
+        warning = combine_warning(warning, f"Tech stats failed: {exc}")
 
     matched_vacancies: list[Vacancy] = []
     for vacancy in fetched_vacancies:
@@ -309,7 +337,12 @@ def run() -> None:
 
     if not new_vacancies:
         warning = record_run_summary(sheets, stats, config, warning)
-        message = build_no_new_message(stats, google_sheet_url(config), warning=warning)
+        message = build_no_new_message(
+            stats,
+            google_sheet_url(config),
+            warning=warning,
+            tech_stats=tech_stats,
+        )
         send_telegram_message(config.telegram_bot_token, config.telegram_chat_id, message)
         logging.info("[done] no new matching vacancies | telegram=sent")
         return
@@ -428,6 +461,7 @@ def run() -> None:
         config.min_score,
         google_sheet_url(config),
         warning=warning,
+        tech_stats=tech_stats,
     )
     send_telegram_message(config.telegram_bot_token, config.telegram_chat_id, message)
     logging.info(

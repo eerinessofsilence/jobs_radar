@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
 
 from radar.jobspy_sources import (
+    collect_jobspy_vacancies,
     jobspy_search_terms,
     json_safe,
     vacancy_from_jobspy_row,
@@ -93,6 +95,37 @@ class JobSpySourcesTest(unittest.TestCase):
 
     def test_json_safe_converts_nan(self) -> None:
         self.assertIsNone(json_safe(float("nan")))
+
+    def test_collect_skips_linkedin_unsupported_location(self) -> None:
+        config = make_config(make_radar())
+        config.jobspy_enabled = True
+        config.jobspy_locations = ["Iceland"]
+        config.jobspy_sites = ["linkedin"]
+
+        with self.assertLogs(level="WARNING") as captured:
+            vacancies = collect_jobspy_vacancies(config)
+
+        self.assertEqual([], vacancies)
+        self.assertIn("LinkedIn does not support this country", "\n".join(captured.output))
+
+    def test_collect_downgrades_linkedin_invalid_country_exception_to_warning(self) -> None:
+        config = make_config(make_radar())
+        config.jobspy_enabled = True
+        config.jobspy_locations = ["Europe"]
+        config.jobspy_sites = ["linkedin"]
+        error = RuntimeError("Invalid country string: 'iceland'. Valid countries are: ukraine")
+
+        with (
+            self.assertLogs(level="WARNING") as captured,
+            patch(
+                "radar.jobspy_sources.scrape_jobspy_site",
+                side_effect=error,
+            ),
+        ):
+            vacancies = collect_jobspy_vacancies(config)
+
+        self.assertEqual([], vacancies)
+        self.assertIn("unsupported country in LinkedIn result", "\n".join(captured.output))
 
 
 if __name__ == "__main__":
