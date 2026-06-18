@@ -174,7 +174,8 @@ def collect_jobspy_vacancies(config: Config) -> list[Vacancy]:
             for site in config.jobspy_sites:
                 if should_skip_jobspy_site_location(site, location):
                     logging.warning(
-                        "[fetch] JobSpy skipped %s | %r | %s: LinkedIn does not support this country.",
+                        "[fetch] JobSpy skipped %s | %r | %s: "
+                        "LinkedIn does not support this country.",
                         site,
                         term,
                         location,
@@ -186,7 +187,8 @@ def collect_jobspy_vacancies(config: Config) -> list[Vacancy]:
                 except Exception as exc:
                     if site == "linkedin" and is_linkedin_unsupported_country_error(exc):
                         logging.warning(
-                            "[fetch] JobSpy skipped linkedin | %r | %s: unsupported country in LinkedIn result (%s).",
+                            "[fetch] JobSpy skipped linkedin | %r | %s: "
+                            "unsupported country in LinkedIn result (%s).",
                             term,
                             location,
                             exc,

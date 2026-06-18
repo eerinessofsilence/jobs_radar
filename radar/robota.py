@@ -163,7 +163,8 @@ def robota_url(item: dict[str, Any]) -> str:
     if isinstance(custom_url, str) and custom_url.strip().startswith("http"):
         return custom_url.strip()
 
-    company = item.get("company") if isinstance(item.get("company"), dict) else {}
+    raw_company = item.get("company")
+    company = raw_company if isinstance(raw_company, dict) else {}
     company_id = company.get("id")
     vacancy_id = item.get("id")
     if company_id and vacancy_id:
@@ -179,8 +180,10 @@ def vacancy_from_robota_item(item: dict[str, Any], keywords: str) -> Vacancy | N
     if not title or not url:
         return None
 
-    company = item.get("company") if isinstance(item.get("company"), dict) else {}
-    city = item.get("city") if isinstance(item.get("city"), dict) else {}
+    raw_company = item.get("company")
+    raw_city = item.get("city")
+    company = raw_company if isinstance(raw_company, dict) else {}
+    city = raw_city if isinstance(raw_city, dict) else {}
     description = clean_html(str(item.get("description") or ""))
 
     return Vacancy(

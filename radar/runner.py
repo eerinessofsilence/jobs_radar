@@ -33,9 +33,9 @@ from .sheets import (
     google_sheet_url,
     open_sheet,
 )
+from .tech_stack import TechStat, build_tech_stats_from_records
 from .telegram import build_no_new_message, build_summary_message, send_telegram_message
 from .text import keywords_label, truncate_text, vacancy_label
-from .tech_stack import TechStat, build_tech_stats_from_records
 
 
 def unique_new_vacancies(vacancies: list[Vacancy], existing_urls: set[str]) -> list[Vacancy]:

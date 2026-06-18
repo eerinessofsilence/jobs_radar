@@ -376,8 +376,7 @@ def load_config() -> Config:
         ),
         jobspy_max_terms=env_int("JOBSPY_MAX_TERMS", 0, minimum=0),
         jobspy_results_per_term=env_int("JOBSPY_RESULTS_PER_TERM", 5, minimum=1),
-        jobspy_country_indeed=os.getenv("JOBSPY_COUNTRY_INDEED", "Ukraine").strip()
-        or "Ukraine",
+        jobspy_country_indeed=os.getenv("JOBSPY_COUNTRY_INDEED", "Ukraine").strip() or "Ukraine",
         jobspy_verbose=env_int("JOBSPY_VERBOSE", 0, minimum=0),
         robota_keywords=split_env_urls(os.getenv("ROBOTA_KEYWORDS"), []),
         robota_cookie=os.getenv("ROBOTA_COOKIE", "").strip(),

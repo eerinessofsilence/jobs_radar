@@ -47,9 +47,7 @@ class TechStackTest(unittest.TestCase):
             make_vacancy("Backend Developer", "Fast API, PostgreSQL, Docker.", "Robota.ua"),
         ]
 
-        stats = {
-            stat.technology: tech_stat_to_dict(stat) for stat in build_tech_stats(vacancies)
-        }
+        stats = {stat.technology: tech_stat_to_dict(stat) for stat in build_tech_stats(vacancies)}
 
         self.assertEqual(1, stats["Python"]["count"])
         self.assertEqual(2, stats["FastAPI"]["count"])

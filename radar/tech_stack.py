@@ -7,7 +7,6 @@ from typing import Any
 from .models import Vacancy
 from .urls import normalize_url
 
-
 TECH_STACK_CATALOG: dict[str, dict[str, list[str]]] = {
     "Languages": {
         "Python": ["python", "py"],
@@ -198,7 +197,9 @@ def build_tech_stats(vacancies: list[Vacancy]) -> list[TechStat]:
     return build_tech_stats_from_records(records)
 
 
-def tech_records_for_vacancies(vacancies: list[Vacancy], found_date: str) -> list[TechMentionRecord]:
+def tech_records_for_vacancies(
+    vacancies: list[Vacancy], found_date: str
+) -> list[TechMentionRecord]:
     records: list[TechMentionRecord] = []
     seen_records: set[tuple[str, str, str]] = set()
     for vacancy in unique_vacancies_for_stats(vacancies):
@@ -231,7 +232,9 @@ def build_tech_stats_from_records(records: list[TechMentionRecord]) -> list[Tech
     for record in records:
         unique_records.setdefault(tech_record_key(record), record)
 
-    total_vacancies = len({normalize_url(record.url) or record.url for record in unique_records.values()})
+    total_vacancies = len(
+        {normalize_url(record.url) or record.url for record in unique_records.values()}
+    )
     stats_by_key: dict[tuple[str, str], TechStat] = {}
     for record in unique_records.values():
         key = (record.category, record.technology)
@@ -241,7 +244,7 @@ def build_tech_stats_from_records(records: list[TechMentionRecord]) -> list[Tech
                 category=record.category,
                 technology=record.technology,
                 total_vacancies=total_vacancies,
-            )
+            ),
         )
         stat.count += 1
         if record.source:
@@ -256,10 +259,7 @@ def build_tech_stats_from_records(records: list[TechMentionRecord]) -> list[Tech
 
 
 def top_tech_stack_lines(stats: list[TechStat], limit: int = 8) -> list[str]:
-    return [
-        f"{stat.technology}: {stat.count}/{stat.total_vacancies}"
-        for stat in stats[:limit]
-    ]
+    return [f"{stat.technology}: {stat.count}/{stat.total_vacancies}" for stat in stats[:limit]]
 
 
 def tech_stat_to_dict(stat: TechStat) -> dict[str, Any]:
